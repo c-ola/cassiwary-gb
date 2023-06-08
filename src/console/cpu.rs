@@ -1,62 +1,29 @@
 use std::fmt;
 use std::error::Error;
+use crate::bytes::*;
+use crate::memory::*;
 
-// sharp sm83 @ 8.4 or 4.2 mhz
-// 256 B rom
-// get this thing working first (it was the gameboys cpu)
-#[derive(Debug)]
-pub struct DMGCPU {
-    cpu: SharpSM83,
-    //ROM_256B: ROM,
-
-    //APU: AudioProcessingUnit,
-    //PPU: PictureProcessingUnit,
-}
-
-impl DMGCPU {
-    pub fn new() -> DMGCPU {
-        DMGCPU {
-            cpu: SharpSM83::new(),
-        }
-    }
-
-    pub fn decode(&mut self){
-        self.cpu.decode();
-    }
-
-    pub fn print_info(&self){
-        self.cpu.print_info();
-    }
-}
-
-
-impl core::fmt::Debug for SharpSM83 {
-    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt.debug_struct("SharpSM83")
-            .field("a", &format_args!("{:02X}", self.a))
-            .field("b", &format_args!("{:02X}", self.b))
-            .field("c", &format_args!("{:02X}", self.c))
-            .field("d", &format_args!("{:02X}", self.d))
-            .field("e", &format_args!("{:02X}", self.e))
-            .field("h", &format_args!("{:02X}", self.h))
-            .field("l", &format_args!("{:02X}", self.l))
-            .field("f", &format_args!("{:#010b}", self.f))
-            .finish()
-    }
-}
-
-const DMG: f32 = 4.194304;
-const CGB: f32 = 8.388608;
-
-const LDREG: u8 = 0b01000000;
+const LDREG: u8 = 0b01;
 const LDIMM: u8 = 0b110;
 
 const XOFFSET: u8 = 3;
 const YOFFSET: u8 = 0;
 const REGMASK: u8 = 0b00000111;
 
-const SCUFFED_INSTRUCTIONS: [u8; 12] = 
+pub const N: usize = 20;
+const SCUFFED_INSTRUCTIONS: [u8; N] = 
 [
+    0b0010_0001, //load HL, nn
+    0b0000_0000, // nn = 0002
+    0b0000_0010,
+
+    0b0011_0110, // load (HL), n
+    0b1110_0011, // n = 0xE3
+
+    0b1110_0101, // push HL
+    0b1101_0001, // pop BC
+
+
     0b0010_1110,
     0b0011_1100, // ldimm
     0b0100_0101, // ldreg
@@ -64,18 +31,22 @@ const SCUFFED_INSTRUCTIONS: [u8; 12] =
     0b0111_0000, // str hl
     0b0011_0110,
     0b0010_0110, // str hl imm
-    0b0000_0000, // str hl
+    0b0001_0001, // load 16
+    0b0100_1111,
+    0b1111_0010,
+    0b0000_1000, //load from sp
     0b0000_0000,
-    0b0000_0000, // str hl
-    0b0000_0000,
-    0b0000_0000, // str hl
+    0b0000_0011,
 
 ];
 
 // the cpu
-//#[derive(Debug)]
 pub struct SharpSM83 {
-    // 8-bit general purpose not even needed???? just split up 16 bit maybe
+
+    pub mem_write_stack: Vec<(u8, u16)>,
+    pub mem_write: u8,
+
+    // 8-bit general purpose 
     a: u8,
     b: u8,
     c: u8,
@@ -87,14 +58,8 @@ pub struct SharpSM83 {
     //8-bit flag / 0-3 grounded to 0, 4 carry flag C, 5, half-carry H, 6 negative N, 7 zero Z
     f: u8,
 
-    // 16-bit general purpose register views
-    //af: u16, //cant write 0-3
-    //bc: u16,
-    //de: u16,
-    //hl: u16,
-
     //16-bit special purpose
-    pc: usize,
+    pub pc: usize,
     sp: u16,
 
 }
@@ -106,45 +71,40 @@ const E: u8 = 0x3;
 const H: u8 = 0x4;
 const L: u8 = 0x5;
 const A: u8 = 0x7;
-const SP_KEY: u8 = 0x3;
+const BC: u8 = 0x0;
+const DE: u8 = 0x1;
+const HL: u8 = 0x2;
+const SP: u8 = 0x3;
 
-struct RR {
-    key: u8,
-    rh: u8,
-    rl: u8,
+impl core::fmt::Debug for SharpSM83 {
+    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt.debug_struct("SharpSM83")
+            .field("a", &format_args!("{:02X}", self.a))
+            .field("b", &format_args!("{:02X}", self.b))
+            .field("c", &format_args!("{:02X}", self.c))
+            .field("d", &format_args!("{:02X}", self.d))
+            .field("e", &format_args!("{:02X}", self.e))
+            .field("h", &format_args!("{:02X}", self.h))
+            .field("l", &format_args!("{:02X}", self.l))
+            .field("sp", &format_args!("{:04X}", self.sp))
+            .field("f", &format_args!("{:#010b}", self.f))
+            .finish()
+    }
 }
-
-const BC: RR = RR {
-    key: 0x0,
-    rh: B,
-    rl: C,
-};
-
-const DE: RR = RR {
-    key: 0x0,
-    rh: D,
-    rl: E,
-};
-
-const HL: RR = RR {
-    key: 0x0,
-    rh: H,
-    rl: L,
-};
-
-const SP: RR = RR {
-    key: 0x0,
-    rh: 0x3,
-    rl: 0x3,
-};
-
-
 
 impl SharpSM83 {
 
+    pub fn run(&mut self, gamepack: &Memory) {
+        println!("\n\nNEW INSTRUCTION STARTING");
+        self.decode(gamepack);
+        self.print_info();
+    }
 
     pub fn new() -> SharpSM83 {
         SharpSM83 {
+            mem_write_stack: Vec::new(),
+            mem_write: 0,
+
             a: 0x00,
             b: 0x00,
             c: 0x00,
@@ -166,7 +126,7 @@ impl SharpSM83 {
             f: 0b01_0_010_1_0, //specific value for the flags at boot i think
 
             pc: 0,
-            sp: 0x00000000,
+            sp: 0x0004,
         }
 
     }  
@@ -175,7 +135,7 @@ impl SharpSM83 {
 
         // ---- get instruction from memory  ----
         let opcode = SCUFFED_INSTRUCTIONS[self.pc];
-        println!("fetched instruction: {:#08b} at pc: {1}", opcode, self.pc);
+        println!("fetched instruction: {:#010b} at pc: {1}", opcode, self.pc);
         self.pc += 1;
 
         opcode
@@ -184,7 +144,7 @@ impl SharpSM83 {
 
     // REDO SO THAT EACH INSTRUCTION IS 8 BITS AND THE NEXT Immediate/etc valueS CAN BE FOUND FROM
     // INCREMENTING THE PC
-    fn decode(&mut self){
+    fn decode(&mut self, gamepack: &Memory){
 
         let opcode = self.fetch();
 
@@ -194,90 +154,95 @@ impl SharpSM83 {
         
         // refactor this to clean it up maybe instead of 100 if statements
         // 8-bit load / store instructions
-        if opcode == 0x0A {
+        if opcode == 0x36 {
+            let n = self.fetch();
+            self.write(self.get_rr(HL), n);
+        }
+
+        else if opcode == 0x0A {
             let loc = self.get_reg_view(B, C); 
-            let n = self.get_memory_at_addr(loc);
+            let n = self.read(loc, gamepack);
             self.set_reg(A, n);
         } 
-        if opcode == 0x1A {
+        else if opcode == 0x1A {
             let loc = self.get_reg_view(D, E); 
-            let n = self.get_memory_at_addr(loc);
+            let n = self.read(loc, gamepack);
             self.set_reg(A, n);
         }
-        if opcode == 0x02 {
+        else if opcode == 0x02 {
             let loc = self.get_reg_view(B, C); 
             self.write(loc, A);
         }
-        if opcode == 0x12 {
+        else if opcode == 0x12 {
             let loc = self.get_reg_view(D, E); 
             self.write(loc, A);
         }
-        if opcode == 0xFA {
+        else if opcode == 0xFA {
             let lsb = self.fetch();
             let msb = self.fetch();
-            let loc = self.u8_to_u16(lsb, msb);
-            let n = self.get_memory_at_addr(loc);
+            let loc = u8_to_u16(lsb, msb);
+            let n = self.read(loc, gamepack);
             self.set_reg(A, n);
         } 
-        if opcode == 0xEA {
+        else if opcode == 0xEA {
             let lsb = self.fetch();
             let msb = self.fetch();
-            let loc = self.u8_to_u16(lsb, msb);
+            let loc = u8_to_u16(lsb, msb);
             self.write(loc, A);
         } 
-        if opcode == 0xF2 {
-            let loc = self.u8_to_u16(0xFF, self.get_reg(C));
-            let n = self.get_memory_at_addr(loc);
+        else if opcode == 0xF2 {
+            let loc = u8_to_u16(0xFF, self.get_reg(C));
+            let n = self.read(loc, gamepack);
             self.set_reg(A, n);
         }
-        if opcode == 0xE2 {
-            let loc = self.u8_to_u16(0xFF, self.get_reg(C));
+        else if opcode == 0xE2 {
+            let loc = u8_to_u16(0xFF, self.get_reg(C));
             self.write(loc, A)
         }
-        if opcode == 0xF0 {
+        else if opcode == 0xF0 {
             let lsb = self.fetch(); 
-            let loc = self.u8_to_u16(0xFF, lsb);
-            let n = self.get_memory_at_addr(loc);
+            let loc = u8_to_u16(0xFF, lsb);
+            let n = self.read(loc, gamepack);
             self.set_reg(A, n);
         }
-        if opcode == 0xF0 {
+        else if opcode == 0xF0 {
             let lsb = self.fetch(); 
-            let loc = self.u8_to_u16(0xFF, lsb);
+            let loc = u8_to_u16(0xFF, lsb);
             self.write(loc, A);
         }
-        if opcode == 0x3A {
+        else if opcode == 0x3A {
             let loc = self.get_reg_view(H, L);
-            let n = self.get_memory_at_addr(loc);
+            let n = self.read(loc, gamepack);
             self.set_reg(A, n);
             self.l -= 1;
         }
-        if opcode == 0x32 {
+        else if opcode == 0x32 {
             let loc = self.get_reg_view(H, L);
             self.write(loc, A);
             self.l -= 1;
         }
-        if opcode == 0x2A {
+        else if opcode == 0x2A {
             let loc = self.get_reg_view(H, L);
-            let n = self.get_memory_at_addr(loc);
+            let n = self.read(loc, gamepack);
             self.set_reg(A, n);
             self.l += 1;
         }
-        if opcode == 0x22 {
+        else if opcode == 0x22 {
             let loc = self.get_reg_view(H, L);
             self.write(loc, A);
             self.l += 1;
         }
         
         
-        if opcode & LDREG != 0 {
-
+        else if opcode >> 6 == LDREG {
+            println!("load 8-bit register");
             let x = (opcode >> XOFFSET) & REGMASK;
             let y = (opcode >> YOFFSET) & REGMASK;
             let mut value: u8 = self.get_reg(y);
 
             if y == 0b110 {
                 let loc = self.get_reg_view(H, L);
-                value = self.get_memory_at_addr(loc);
+                value = self.read(loc, gamepack);
             }
             if x == 0b110 {
                 let loc = self.get_reg_view(H, L);
@@ -285,9 +250,9 @@ impl SharpSM83 {
                 ()
             }
             self.set_reg(x, value);    
-
         }
-        else if opcode & LDIMM != 0 {
+        else if (opcode >> 5) == 0 && opcode & 0b111 == LDIMM {
+            println!("load imm");
             let x = (opcode >> XOFFSET) & REGMASK;
             let y = (opcode >> YOFFSET) & REGMASK;
             let n = self.fetch();
@@ -296,9 +261,6 @@ impl SharpSM83 {
                 let loc = self.get_reg_view(H, L);
                 self.write(loc, n);
                 ()
-            }
-            else if y == 0b010 {
-                
             }
             else{
                 self.set_reg(x, n)
@@ -310,33 +272,87 @@ impl SharpSM83 {
         // LDSPNN       = 0b00001000
         
         //load reg view with immediate
-        if opcode & 0x1 != 0 {
-            let reg = self.get_reg_view_rr(opcode >> 4);
-
+        else if opcode & 0x0001 != 0 && opcode >> 6 == 0 {
+            let rr_key = opcode >> 4;
+            let lsb = self.fetch();
+            let msb = self.fetch();
+            let nn = u8_to_u16(lsb, msb); 
+            self.load_rr(rr_key, nn);
         }
 
+        // write to memory from sp
+        else if opcode == 0x08 {
+            let lsb = self.fetch();
+            let msb = self.fetch();
+            let loc = u8_to_u16(lsb, msb);
+            self.write(loc, high(self.sp));
+            self.write(loc + 1, low(self.sp));
+        }
 
+        // load stack pointer from HL
+        else if opcode == 0xF9 {
+            self.load_rr(SP, self.get_reg_view(H, L))
+        }
+            
+        else if opcode >> 6 == 0b11 {
+            let rr_key = high_u8(opcode - 0b11000000);
 
+            //push to stack 0b11xx0101
+            if opcode & 0b0101 == 0b0101 {
+                let rr = self.get_rr(rr_key);
+                let lsb = high(rr);
+                let msb = low(rr);
+                self.sp -= 1;
+                self.write(self.sp, msb);
+                self.sp -= 1;
+                self.write(self.sp, lsb);
+            }
+            //pop from stack 0b11xx0001
+            else if opcode & 0b0001 == 0b0001 {
+                let lsb = self.read(self.sp, &gamepack);
+                self.sp += 1;
+                let msb = self.read(self.sp, &gamepack);
+                self.sp += 1;
+
+                self.load_rr(rr_key, u8_to_u16(lsb, msb));
+            }
+
+        }else{
+            println!("did nothing lol");
+        }
     }
-    
-    fn load_view(&self, rr: u8) {
-        
+
+    fn set_rr_from_u16(&mut self, r1: u8, r2: u8, nn: u16) {
+        self.set_reg(r1, (nn >> 8) as u8);
+        self.set_reg(r2, nn as u8);
     }
 
-    fn get_reg_view_rr(&self, rr: u8) -> u16 {
-        0x1
+    fn get_rr(&self, rr_key: u8) -> u16 {
+        match rr_key {
+            BC => self.get_reg_view(B, C),
+            DE => self.get_reg_view(D, E),
+            HL => self.get_reg_view(H, L),
+            SP => self.sp,
+            _ => 0x11
+        }
+    }
+
+    fn load_rr(&mut self, rr_key: u8, nn: u16) {
+        match rr_key {
+            BC => self.set_rr_from_u16(B, C, nn),
+            DE => self.set_rr_from_u16(D, E, nn),
+            HL => self.set_rr_from_u16(H, L, nn),
+            SP => self.sp = nn,
+            _ => ()
+        }
     }
 
     fn get_reg_view(&self, x: u8, y: u8) -> u16 {
-        self.u8_to_u16(self.get_reg(x), self.get_reg(y))
-    }
-    
-    fn u8_to_u16(&self, high: u8, low: u8) -> u16 {
-        (high as u16) * (2 << 8) + low as u16
+        u8_to_u16(self.get_reg(x), self.get_reg(y))
     }
 
-    fn set_reg(&mut self, x: u8, n: u8) {
-        match x {
+    fn set_reg(&mut self, r: u8, n: u8) {
+        match r {
             B => self.b = n,
             C => self.c = n,
             D => self.d = n,
@@ -390,16 +406,17 @@ impl SharpSM83 {
         }
     }
 
-    fn get_memory_at_addr(&self, addr: u16) -> u8{
-        // memory[addr]
-        0b10011001
+    fn read(&self, addr: u16, gamepack: &Memory) -> u8{
+        gamepack.read(addr)
     }
 
-    fn write(&self, addr: u16, reg: u8){
-        println!("wrote {0:02X} at address {1:#016b}", reg, addr)
+    fn write(&mut self, addr: u16, reg: u8){
+        println!("wrote {0:02X} at address {1:#018b}", reg, addr);
+        self.mem_write_stack.push((reg, addr));
+        self.mem_write += 1;
     }
 
-    fn print_info(&self){
+    pub fn print_info(&self){
         println!("{:#?}", self);
     }
 
@@ -414,12 +431,4 @@ impl fmt::Display for InvalidRegError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Invalid specified register")
     }
-}
-
-
-
-// ARM7TDMI @ 16.78MHz\
-// the new one for the game boy advanced
-struct AGB {
-
 }

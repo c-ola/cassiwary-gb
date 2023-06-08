@@ -1,0 +1,8 @@
+goals from highest prio to lowest
+
+- implement all instructions (arithmetic, jump, etc)
+- emulate memory properly
+- display graphics (memory mappings)
+- sound
+
+https://gekkio.fi/files/gb-docs/gbctr.pdf
