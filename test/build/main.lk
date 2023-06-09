@@ -1,0 +1,11 @@
+-mjwx
+-i test/build/main.ihx
+-b _CODE = 0x0200
+-b _DATA = 0xc000
+-k /usr/local/bin/../share/sdcc/lib/sm83
+-k /usr/local/share/sdcc/lib/sm83
+-l sm83
+/usr/local/bin/../share/sdcc/lib/sm83/crt0.rel
+test/build/main.rel
+
+-e

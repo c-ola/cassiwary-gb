@@ -7,4 +7,6 @@ edition = "2021"
 
 [dependencies]
 backtrace = "0.3.67"
+bitfield = "0.14.0"
+bitvec = "1.0.1"
 byteorder = "1.4.3"
