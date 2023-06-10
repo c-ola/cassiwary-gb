@@ -45,9 +45,9 @@
 ; Function main
 ; ---------------------------------
 _main::
-;test/main.c:5: return a;
-	ld	bc, #0x000b
-;test/main.c:6: }
+;test/main.c:6: return -1;
+	ld	bc, #0xffff
+;test/main.c:7: }
 	ret
 	.area _CODE
 	.area _INITIALIZER

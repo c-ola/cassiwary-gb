@@ -109,28 +109,212 @@ mod tests {
     fn arithmetic(){
         let mut gb = GameBoy::new();
         gb.init();
-        gb.set_run_count(3);
+        gb.set_run_count(5);
         
-        //load a 5
+        //load a 84
         gb.write(0b0011_1110);
-        gb.write(0b0000_0101); 
+        gb.write(0b1000_0100); 
 
-        //load b 3
+        //load b B3
         gb.write(0b0000_0110);
-        gb.write(0x03);
+        gb.write(0b1011_0011);
 
+        //load c BA
+        gb.write(0b0000_1110);
+        gb.write(0b1011_1010);
+        
+        //load HL 0x3E10
+        gb.write(0x21);
+        gb.write(0x3E);
+        gb.write(0x10);
+        
         //load de 0x03A1
         gb.write(0x11);
-        gb.write(0x03);
-        gb.write(0xA1);
+        gb.write(0b0000_0011);
+        gb.write(0b1010_0001);
 
         gb.start();
 
         //add b
         gb.inc_instr_count();
-        gb.write(0b10000000);
+        gb.write(0x80);
         gb.start();
-        assert_eq!(gb.peek_cpu().get_reg(A), 0x08);
+        assert_eq!(gb.peek_cpu().get_reg(A), 0x137u16 as u8);
+        assert_eq!(gb.peek_cpu().get_flag(), 0b0001_0000);
+
+        //daa
+        gb.inc_instr_count();
+        gb.write(0x27);
+        gb.start();
+        assert_eq!(gb.peek_cpu().get_flag(), 0b0001_0000);
+
+
+        gb.inc_instr_count();
+        gb.write(0b0011_1110);
+        gb.write(0x37); 
+        gb.start();
+
+
+        //sub c
+        gb.inc_instr_count();
+        gb.write(0x91);
+        gb.start();
+        assert_eq!(gb.peek_cpu().get_reg(A), 0x3E);
+        assert_eq!(gb.peek_cpu().get_flag(), 0b0111_0000);
+
+        // and e
+        gb.inc_instr_count();
+        gb.write(0xA3);
+        gb.start();
+        assert_eq!(gb.peek_cpu().get_reg(A), 0x20);
+
+        // or d
+        gb.inc_instr_count();
+        gb.write(0xB2);
+        gb.start();
+        assert_eq!(gb.peek_cpu().get_reg(A), 0x23);
+
+        // xor e
+        gb.inc_instr_count();
+        gb.write(0xAB);
+        gb.start();
+        assert_eq!(gb.peek_cpu().get_reg(A), 0x82);
+
+        // cp H
+        gb.inc_instr_count();
+        gb.write(0xBC);
+        gb.start();
+        assert_eq!(gb.peek_cpu().get_flag(), 0b0110_0000);
+
+        //scf
+        gb.inc_instr_count();
+        gb.write(0x37);
+        gb.start();
+        assert_eq!(gb.peek_cpu().get_flag(), 0b0001_0000);
+
+        //ccf
+        gb.inc_instr_count();
+        gb.write(0x3F);
+        gb.start();
+        assert_eq!(gb.peek_cpu().get_flag(), 0b0000_0000);
+
+        //cpl
+        gb.inc_instr_count();
+        let a = gb.peek_cpu().get_reg(A);
+        gb.write(0x2F);
+        gb.start();
+        assert_eq!(!a, gb.peek_cpu().get_reg(A));
+        assert_eq!(gb.peek_cpu().get_flag(), 0b0110_0000);
+
+        //add HL, BC
+        gb.inc_instr_count();
+        gb.write(0x09);
+        gb.start();
+        assert_eq!(gb.peek_cpu().get_rr(HL), 0xB3BA + 0x3E10);
+        
+
+        //havent tested INC instructions or ADC or rotations
 
     }
+
+    #[test]
+    fn control(){
+        let mut gb = GameBoy::new();
+        gb.init();
+        gb.set_run_count(0);
+        
+        //write out asm starting here
+        //JP nn ; 0
+        gb.write(0xC3);
+        gb.write(0x00);
+        gb.write(0x07);
+        
+        //DI ; 3
+        gb.write(0xF3);
+                
+        //EI ; 4
+        gb.write(0xFB);
+
+        //JR e ; 5
+        gb.write(0x18);
+        gb.write(0x03);
+        
+        //JP cc, nn ; 7
+        gb.write(0xC2);
+        gb.write(0x00);
+        gb.write(0x03); // jump to ; 3
+        
+        //LD SP nn ; 10
+        gb.write(0x31);
+        gb.write(0xf0);
+        gb.write(0x00);
+        
+        //call 0x0100 ; 13
+        gb.write(0xCD);
+        gb.write(0x01);
+        gb.write(0x00); //; 15
+                        
+        gb.write(0x00); // nop
+                        
+        gb.write(0xF1); // pop AF (sets a to 0 for conditional call)
+        
+        gb.write(0xCC); // call c , nn
+        gb.write(0x01);
+        gb.write(0x02);
+
+        gb.write(0x00); // nop
+
+        gb.write(0b11_111_111); // rst 0b110
+
+
+        gb.gamepack.write(0x0100, 0x00); //nop
+        gb.gamepack.write(0x0101, 0xC9); //ret
+
+        gb.gamepack.write(0x0102, 0x00); //nop
+        gb.gamepack.write(0x0103, 0xC9); // reti
+        
+        gb.gamepack.write(0x0100, 0x00);
+ 
+        //step through instructions here
+        gb.inc_instr_count();
+        gb.start();
+        assert_eq!(gb.peek_cpu().pc, 0x07); // jp nn
+
+        gb.inc_instr_count();
+        gb.start();
+        assert_eq!(gb.peek_cpu().pc, 0x03); // jp cc nn
+
+        gb.inc_instr_count();
+        gb.inc_instr_count();
+        gb.inc_instr_count();
+        gb.start();
+        assert_eq!(gb.peek_cpu().pc, 0x0A); // jr e
+
+        gb.inc_instr_count();
+        gb.inc_instr_count();
+        gb.start();
+        assert_eq!(gb.peek_cpu().pc, 0x0100); // call 0x0100
+        
+        gb.inc_instr_count();
+        gb.inc_instr_count();
+        gb.start();
+        assert_eq!(gb.peek_cpu().pc, 0x10); // ret addr
+                                            
+        gb.inc_instr_count();
+        gb.inc_instr_count();
+        gb.start();
+        assert_eq!(gb.peek_cpu().get_reg(A), 0);
+
+        gb.inc_instr_count();
+        gb.inc_instr_count();
+        gb.inc_instr_count();
+        gb.start();
+        assert_eq!(gb.peek_cpu().pc, 21); // reti addr
+        
+        gb.inc_instr_count();
+        gb.inc_instr_count();
+        gb.start();
+        assert_eq!(gb.peek_cpu().pc, 0x3800);   // rst 3 return addr
+    }
+
 }

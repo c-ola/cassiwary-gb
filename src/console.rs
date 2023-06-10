@@ -65,9 +65,38 @@ impl GameBoy {
         self.gamepack.print(0, 5);
 
     }
+    
+    pub fn run_emulator(&mut self) {
+        println!("---------BEGINNING EMULATION---------");
+
+        self.cpu.init_emu();
+
+        while !self.cpu.stop && self.accumulator < 10000 {
+            
+            match self.cpu.run(&self.gamepack) {
+                Ok(()) => {
+                    while self.cpu.mem_write_stack.len() > 0 {
+                        self.cpu.mem_write -= 1;
+                        let dat = self.cpu.mem_write_stack.pop();
+
+                        match dat {
+                            Some((x, y)) => self.gamepack.write(y, x),
+                            _ => ()
+                        }
+                    }
+                },
+                Err(error) => println!("{error}"),
+            }
+
+            self.accumulator += 1;
+        }
+
+        self.log_memory();
+
+    }
 
     pub fn start(&mut self) {
-        println!("---------BEGINNING EMULATION---------");
+
         if !self.run_on_boot {
             println!("not running");
             return
@@ -96,7 +125,7 @@ impl GameBoy {
         }
 
     }
-        
+
     pub fn inc_instr_count(&mut self){
         self.instruction_count += 1;
     }
@@ -109,9 +138,6 @@ impl GameBoy {
     }
 
     pub fn print_info(&self) {
-        self.cpu.print_info();
-        println!("");
-        //println!("{:#?}", self);
     }
 
     pub fn write(&mut self, data: u8) {

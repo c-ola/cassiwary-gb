@@ -24,7 +24,7 @@ const SCUFFED_INSTRUCTIONS: [u8; INSTR_SIZE] = [
     0b0000_0011,
 
     0b1000_0000, //add B
-                 
+
     0b0010_0001, //load HL, nn
     0b0000_0000, // nn = 0002
     0b0000_0010,
@@ -49,12 +49,44 @@ const SCUFFED_INSTRUCTIONS: [u8; INSTR_SIZE] = [
     ];
 
 impl Memory {
+    fn setup_boot(&mut self) {
+        self.data[0xFF05] = 0x00;
+        self.data[0xFF06] = 0x00;
+        self.data[0xFF07] = 0x00;
+        self.data[0xFF10] = 0x80;
+        self.data[0xFF11] = 0xBF;
+        self.data[0xFF12] = 0xF3;
+        self.data[0xFF14] = 0xBF;
+        self.data[0xFF16] = 0x3F;
+        self.data[0xFF17] = 0x00;
+        self.data[0xFF19] = 0xBF;
+        self.data[0xFF1A] = 0x7F;
+        self.data[0xFF1B] = 0xFF;
+        self.data[0xFF1C] = 0x9F;
+        self.data[0xFF1E] = 0xBF;
+        self.data[0xFF20] = 0xFF;
+        self.data[0xFF21] = 0x00;
+        self.data[0xFF22] = 0x00;
+        self.data[0xFF23] = 0xBF;
+        self.data[0xFF24] = 0x77;
+        self.data[0xFF25] = 0xF3;
+        self.data[0xFF26] = 0xF1;
+        self.data[0xFF40] = 0x91;
+        self.data[0xFF42] = 0x00;
+        self.data[0xFF43] = 0x00;
+        self.data[0xFF45] = 0x00;
+        self.data[0xFF47] = 0xFC;
+        self.data[0xFF48] = 0xFF;
+        self.data[0xFF49] = 0xFF;
+        self.data[0xFF4A] = 0x00;
+        self.data[0xFF4B] = 0x00;
+        self.data[0xFFFF] = 0x00; 
+    }
+
     pub fn init_memory(&mut self){
-        let mut i = 0u16; 
         
-        
-        let filename = "test/main.bin";
-        
+        let filename = "/home/nikola/Downloads/Pokemon - Yellow Version - Special Pikachu Edition (USA, Europe) (GBC,SGB Enhanced).gb";
+
         let buffer = match USE_SCUFFED_INSTRUCTINOS {
             true => SCUFFED_INSTRUCTIONS.to_vec(),
             false => {
@@ -68,10 +100,13 @@ impl Memory {
             }
         };
 
+        let mut i = 0u16; 
         for instr in buffer {
-            i += 1;
             self.write(i, instr);
+            i += 1;
         }
+
+        self.setup_boot();
     }
 
     pub fn log(&self) -> Result<()> {
@@ -103,7 +138,7 @@ impl Memory {
     }
 
     pub fn print(&self, addr: usize, lines: usize){
-        
+
         println!("Showing address from Memory: {0:04X} to {1:04X}", addr, addr + lines * 16);
 
         for i in (addr..(addr + lines * 16)).step_by(16) {

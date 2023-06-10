@@ -45,9 +45,9 @@
                                      45 ; Function main
                                      46 ; ---------------------------------
       000000                         47 _main::
-                                     48 ;test/main.c:5: return a;
-      000000 01 0B 00                49 	ld	bc, #0x000b
-                                     50 ;test/main.c:6: }
+                                     48 ;test/main.c:6: return -1;
+      000000 01 FF FF                49 	ld	bc, #0xffff
+                                     50 ;test/main.c:7: }
       000003 C9                      51 	ret
                                      52 	.area _CODE
                                      53 	.area _INITIALIZER
