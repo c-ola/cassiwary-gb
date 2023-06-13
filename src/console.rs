@@ -42,13 +42,6 @@ pub struct GameBoy {
 }
 
 impl GameBoy {
-    pub fn peek_cpu(&self) -> &SharpSM83 {
-        &self.cpu
-    }
-
-    pub fn peek_memory(&self) -> &Memory {
-        &self.gamepack
-    }
 
     pub fn new() -> GameBoy {
         GameBoy {
@@ -61,13 +54,14 @@ impl GameBoy {
             ppu: PPU::new(),
         }
     }
-    
-    fn make_texture<'a>(&self, canvas: &mut Canvas<Window>, texture_creator: &'a TextureCreator<WindowContext>) -> Result<Texture<'a>, String>{
-        let tex = texture_creator
-            .create_texture_streaming(PixelFormatEnum::RGBA32, 240, 240)
-            .map_err(|e| e.to_string())?;
+
+    pub fn init(&mut self, rom_path: Option<&str>) {
         
-        Ok(tex)
+        println!("Initial Memory");
+        self.gamepack.init_memory(rom_path);
+        self.cpu.init_emu();
+        self.gamepack.print(0, 5);
+
     }
 
     pub fn run_emu(&mut self) -> Result<(), String>{
@@ -134,16 +128,6 @@ impl GameBoy {
         self.instruction_count = count;
     }
 
-
-    pub fn init(&mut self) {
-
-        println!("Initial Memory");
-        self.gamepack.init_memory();
-        self.cpu.init_emu();
-        self.gamepack.print(0, 5);
-
-    }
-
     pub fn tick_cpu(&mut self) {
 
         if !self.cpu.stop {
@@ -166,8 +150,6 @@ impl GameBoy {
             self.accumulator += 1;
         }
 
-        //self.log_memory();
-
     }
 
     pub fn stop(&self) {
@@ -186,24 +168,14 @@ impl GameBoy {
 
         while self.accumulator < self.instruction_count as u32 {
             println!("Instruction: {0}", self.accumulator);
-            match self.cpu.run(&self.gamepack) {
-                Ok(()) => {
-                    while self.cpu.mem_write_stack.len() > 0 {
-                        self.cpu.mem_write -= 1;
-                        let dat = self.cpu.mem_write_stack.pop();
-
-                        match dat {
-                            Some((x, y)) => self.gamepack.write(y, x),
-                            _ => ()
-                        }
-                    }
-                },
-                Err(error) => println!("{error}"),
-            }
-
-            self.accumulator += 1;
+            self.tick_cpu();
         }
 
+    }
+
+    pub fn write(&mut self, data: u8) {
+        self.gamepack.write(self.write_idx, data);
+        self.write_idx += 1;
     }
 
     pub fn inc_instr_count(&mut self){
@@ -220,8 +192,11 @@ impl GameBoy {
     pub fn print_info(&self) {
     }
 
-    pub fn write(&mut self, data: u8) {
-        self.gamepack.write(self.write_idx, data);
-        self.write_idx += 1;
+    pub fn peek_cpu(&self) -> &SharpSM83 {
+        &self.cpu
+    }
+
+    pub fn peek_memory(&self) -> &Memory {
+        &self.gamepack
     }
 }

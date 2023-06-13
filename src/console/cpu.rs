@@ -104,20 +104,7 @@ impl SharpSM83 {
     }
     
     pub fn init_emu(&mut self) {
-
-        self.a = 0x01;
-        self.b = 0x00;
-        self.c = 0x13;
-        self.d = 0x00;
-        self.e = 0xd9;
-        self.h = 0x01;
-        self.l = 0x4d;
-        self.f = 0xb0;
-        
-        self.pc = 0x0100;
-        self.sp = 0xfffe;
         self.mode = Mode::EMU;
-
     }
 
     pub fn new() -> SharpSM83 {
