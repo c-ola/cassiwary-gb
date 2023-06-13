@@ -1,21 +1,22 @@
-use bitvec::prelude::*;
-
-#[macro_export]
-macro_rules! bitsliceu8 {
-    ( $elem:expr ) => {
-        {
-            let bits = BitSlice::<u8, Msb0>::from_element($elem);
-            bits
-        }
-    };
-}
-
 pub fn cmpbit(x: u8, y: u8) -> bool {
     x & y == y
 }
 
 pub fn maskbits(x: u8, y: u8) -> u8 {
     x & y
+}
+
+pub fn merge_between_u8_u16(lsb: u8, msb: u8) -> u16 {
+    let mut result = 0u16;
+    
+    for i in 0..8 {
+        let mask = 1u8 << i;
+        let a = (lsb & mask) as u16;
+        let b = (msb & mask) as u16;
+        result += (a << (i + 1)) + (b << (i));
+    }
+
+    result
 }
 
 pub fn high_u16(x: u16) -> u8 {

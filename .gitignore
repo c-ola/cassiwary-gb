@@ -1,3 +1,5 @@
 /target
+/roms
+/test
 *.hex
 *.log

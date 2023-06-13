@@ -1,15 +1,45 @@
 pub mod console;
 pub mod bytes;
-
 use crate::console::*;
+
+//use wasm_bindgen::prelude::*;
 
 #[cfg(test)]
 mod tests {
-    use crate::*;
- 
-    #[test]
+    use crate::ppu::{Tile, PPU};
+    use crate::console::*;
+
+
+#[test]
+    fn tiles() {
+
+        let data = [
+            0x3C, 0x7E,
+            0x42, 0x42,
+            0x42, 0x42,
+            0x42, 0x42,
+            0x7E, 0x5E,
+            0x7E, 0x0A,
+            0x7C, 0x56,
+            0x38, 0x7C,
+        ];
+
+        let tile = Tile::new(data);
+        //tile.render();
+
+        //panic!();
+    }
+
+#[test]
+    fn tilemap(){
+        //let tilemap = PPU::new();
+        //tilemap.render();
+        // panic!();
+    }
+
+#[test]
     fn launch() {
-        let mut gb = GameBoy::new();
+        let mut gb = GameBoy::new_test();
         gb.init();
         gb.gamepack.write(0, 0x00);
         gb.set_boot(false);
@@ -17,10 +47,10 @@ mod tests {
         assert_eq!(gb.peek_cpu().get_reg(B), 0x00);
         assert_eq!(gb.peek_memory().read(0x0000), 0x00);   
     }
-    
-    #[test]
+
+#[test]
     fn loads() {
-        let mut gb = GameBoy::new();
+        let mut gb = GameBoy::new_test();
         gb.init();
         gb.set_run_count(0);
 
@@ -30,14 +60,14 @@ mod tests {
         gb.write(0b0000_0101);
         gb.start();
         assert_eq!(gb.peek_cpu().get_reg(A), 0x05);
-        
+
         //load B, 2
         gb.inc_instr_count();
         gb.write(0b0000_0110);
         gb.write(0x03);
         gb.start();
         assert_eq!(gb.peek_cpu().get_reg(B), 0x03);
-        
+
         //load C, B
         gb.inc_instr_count();
         gb.write(0x48);
@@ -95,7 +125,7 @@ mod tests {
         gb.start();
         gb.gamepack.print(0xFF00, 1);
         assert_eq!((gb.peek_memory().read(0xFF01), gb.peek_memory().read(0xFF02)), (0x03, 0xA1));
- 
+
         //POP rr
         gb.inc_instr_count();
         gb.write(0b1100_0001);
@@ -105,12 +135,12 @@ mod tests {
     }
 
 
-    #[test]
+#[test]
     fn arithmetic(){
-        let mut gb = GameBoy::new();
+        let mut gb = GameBoy::new_test();
         gb.init();
         gb.set_run_count(5);
-        
+
         //load a 84
         gb.write(0b0011_1110);
         gb.write(0b1000_0100); 
@@ -122,12 +152,12 @@ mod tests {
         //load c BA
         gb.write(0b0000_1110);
         gb.write(0b1011_1010);
-        
+
         //load HL 0x3E10
         gb.write(0x21);
         gb.write(0x3E);
         gb.write(0x10);
-        
+
         //load de 0x03A1
         gb.write(0x11);
         gb.write(0b0000_0011);
@@ -211,53 +241,53 @@ mod tests {
         gb.write(0x09);
         gb.start();
         assert_eq!(gb.peek_cpu().get_rr(HL), 0xB3BA + 0x3E10);
-        
+
 
         //havent tested INC instructions or ADC or rotations
 
     }
 
-    #[test]
+#[test]
     fn control(){
-        let mut gb = GameBoy::new();
+        let mut gb = GameBoy::new_test();
         gb.init();
         gb.set_run_count(0);
-        
+
         //write out asm starting here
         //JP nn ; 0
         gb.write(0xC3);
         gb.write(0x00);
         gb.write(0x07);
-        
+
         //DI ; 3
         gb.write(0xF3);
-                
+
         //EI ; 4
         gb.write(0xFB);
 
         //JR e ; 5
         gb.write(0x18);
         gb.write(0x03);
-        
+
         //JP cc, nn ; 7
         gb.write(0xC2);
         gb.write(0x00);
         gb.write(0x03); // jump to ; 3
-        
+
         //LD SP nn ; 10
         gb.write(0x31);
         gb.write(0xf0);
         gb.write(0x00);
-        
+
         //call 0x0100 ; 13
         gb.write(0xCD);
         gb.write(0x01);
         gb.write(0x00); //; 15
-                        
+
         gb.write(0x00); // nop
-                        
+
         gb.write(0xF1); // pop AF (sets a to 0 for conditional call)
-        
+
         gb.write(0xCC); // call c , nn
         gb.write(0x01);
         gb.write(0x02);
@@ -272,9 +302,9 @@ mod tests {
 
         gb.gamepack.write(0x0102, 0x00); //nop
         gb.gamepack.write(0x0103, 0xC9); // reti
-        
+
         gb.gamepack.write(0x0100, 0x00);
- 
+
         //step through instructions here
         gb.inc_instr_count();
         gb.start();
@@ -294,12 +324,12 @@ mod tests {
         gb.inc_instr_count();
         gb.start();
         assert_eq!(gb.peek_cpu().pc, 0x0100); // call 0x0100
-        
+
         gb.inc_instr_count();
         gb.inc_instr_count();
         gb.start();
         assert_eq!(gb.peek_cpu().pc, 0x10); // ret addr
-                                            
+
         gb.inc_instr_count();
         gb.inc_instr_count();
         gb.start();
@@ -310,11 +340,37 @@ mod tests {
         gb.inc_instr_count();
         gb.start();
         assert_eq!(gb.peek_cpu().pc, 21); // reti addr
-        
+
         gb.inc_instr_count();
         gb.inc_instr_count();
         gb.start();
         assert_eq!(gb.peek_cpu().pc, 0x3800);   // rst 3 return addr
     }
-
 }
+/*
+   pub fn set_panic_hook() {
+// When the `console_error_panic_hook` feature is enabled, we can call the
+// `set_panic_hook` function at least once during initialization, and then
+// we will get better error messages if our code ever panics.
+//
+// For more details see
+// https://github.com/rustwasm/console_error_panic_hook#readme
+#[cfg(feature = "console_error_panic_hook")]
+console_error_panic_hook::set_once();
+}
+
+#[wasm_bindgen]
+extern {
+pub fn alert(s: &str);
+}
+
+// When the `wee_alloc` feature is enabled, use `wee_alloc` as the global
+// allocator.
+#[cfg(feature = "wee_alloc")]
+#[global_allocator]
+static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
+
+#[wasm_bindgen]
+pub fn greet(name: &str) {
+alert(&format!("Hello, {}!", name));
+}*/

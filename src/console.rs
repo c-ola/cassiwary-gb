@@ -1,8 +1,19 @@
 pub mod cpu;
 pub mod memory;
+pub mod ppu;
 
+use crate::ppu::*;
 use crate::cpu::*;
 use crate::memory::*;
+
+use sdl2::pixels::Color;
+use sdl2::event::Event;
+use sdl2::keyboard::Keycode;
+use sdl2::pixels::PixelFormatEnum;
+use std::time::Duration;
+use sdl2::render::{Canvas, Texture, TextureCreator};
+use sdl2::video::{Window, WindowContext};
+use sdl2::rect::{Rect, Point};
 
 pub const B: u8 = 0x0;
 pub const C: u8 = 0x1;
@@ -17,8 +28,9 @@ pub const DE: u8 = 0x1;
 pub const HL: u8 = 0x2;
 pub const SP: u8 = 0x3;
 
+const SCREEN_WIDTH: u32 = 600;
+const SCREEN_HEIGHT: u32 = 600;
 
-#[derive(Debug)]
 pub struct GameBoy {
     run_on_boot: bool,
     instruction_count: u16,
@@ -26,6 +38,7 @@ pub struct GameBoy {
     cpu: SharpSM83,
     pub gamepack: Memory,
     pub write_idx: u16,
+    ppu: PPU,
 }
 
 impl GameBoy {
@@ -41,14 +54,78 @@ impl GameBoy {
         GameBoy {
             run_on_boot: true,
             accumulator: 0,
-            instruction_count: 50,
+            instruction_count: 10000,
             cpu: SharpSM83::new(),
             gamepack: Memory::new(8 * KBYTE),
             write_idx: 0,
-
+            ppu: PPU::new(),
         }
     }
     
+    fn make_texture<'a>(&self, canvas: &mut Canvas<Window>, texture_creator: &'a TextureCreator<WindowContext>) -> Result<Texture<'a>, String>{
+        let tex = texture_creator
+            .create_texture_streaming(PixelFormatEnum::RGBA32, 240, 240)
+            .map_err(|e| e.to_string())?;
+        
+        Ok(tex)
+    }
+
+    pub fn run_emu(&mut self) -> Result<(), String>{
+
+        let sdl_context = sdl2::init()?;
+        let video_subsystem = sdl_context.video()?;
+
+        let window = video_subsystem
+            .window("Cassowary Gameboy", SCREEN_WIDTH, SCREEN_HEIGHT)
+            .vulkan()
+            .position_centered()
+            .build()
+            .map_err(|e| e.to_string())?;
+
+
+        let mut canvas = window.into_canvas().build().unwrap();
+
+        let texture_creator = canvas.texture_creator();
+
+        let mut texture = texture_creator
+        .create_texture_target(PixelFormatEnum::RGBA8888, 240, 240)
+        .map_err(|e| e.to_string())?;
+
+        canvas.clear();
+
+        canvas.copy(&texture, None, Some(Rect::new(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT)))?;
+        canvas.present();
+
+        let mut event_pump = sdl_context.event_pump().unwrap();
+        
+        'running: loop {
+            for event in event_pump.poll_iter() {
+                match event {
+                    Event::Quit {..} |
+                        Event::KeyDown { keycode: Some(Keycode::Escape), .. } => {
+                            break 'running
+                        },
+                    _ => {}
+                }
+            }
+
+
+            self.tick_cpu();
+
+            self.ppu.update(&self.gamepack);
+
+            self.ppu.render(&mut canvas, &mut texture)?;
+
+            canvas.copy(&texture, None, Some(Rect::new(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT)))?;
+            canvas.present();
+
+           // ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
+        }
+
+        //self.stop();
+        Ok(())
+    }
+
     pub fn set_boot(&mut self, boot: bool) {
         self.run_on_boot = boot;
     }
@@ -56,23 +133,21 @@ impl GameBoy {
     pub fn set_run_count(&mut self, count: u16) {
         self.instruction_count = count;
     }
-    
+
 
     pub fn init(&mut self) {
 
         println!("Initial Memory");
         self.gamepack.init_memory();
+        self.cpu.init_emu();
         self.gamepack.print(0, 5);
 
     }
-    
-    pub fn run_emulator(&mut self) {
-        println!("---------BEGINNING EMULATION---------");
 
-        self.cpu.init_emu();
+    pub fn tick_cpu(&mut self) {
 
-        while !self.cpu.stop && self.accumulator < 10000 {
-            
+        if !self.cpu.stop {
+
             match self.cpu.run(&self.gamepack) {
                 Ok(()) => {
                     while self.cpu.mem_write_stack.len() > 0 {
@@ -91,8 +166,13 @@ impl GameBoy {
             self.accumulator += 1;
         }
 
-        self.log_memory();
+        //self.log_memory();
 
+    }
+
+    pub fn stop(&self) {
+        self.log_memory();
+        self.gamepack.print(0x8000, 100);
     }
 
     pub fn start(&mut self) {
