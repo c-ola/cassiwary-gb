@@ -135,7 +135,7 @@ pub fn u8_cmp (a: u8, b: u8) -> (u8, u8) {
 }
 
 
-pub fn u8_to_u16(lsb: u8, msb: u8) -> u16 {
+pub fn u8_to_u16(msb: u8, lsb: u8) -> u16 {
     (lsb as u16) * (2 << 7) + msb as u16
 }
 

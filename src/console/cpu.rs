@@ -105,7 +105,9 @@ impl SharpSM83 {
         };
 
         let instr_time = start.elapsed();
-        println!("cpu_speed: {:.5} Hz", 1.0/((instr_time.as_nanos() as f64)/ 1_000_000_000.0f64));
+        println!("cpu_speed: {:.5} hz", 1.0/((instr_time.as_nanos() as f64)/ 1_000_000_000.0f64)); // doesnt
+                                                                                                   // seem
+                                                                                                   // right
 
         self.print_info();
 
