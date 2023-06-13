@@ -153,6 +153,26 @@ impl SharpSM83 {
         opcode
     }
     
+
+    fn decode_instruction(&mut self, gamepack: &Memory) -> Result<(), String> {
+        let opcode = self.fetch(gamepack);
+        let _op_x = opcode >> 6;
+        let _op_y = (opcode & 0b00111000) >> 3;
+        let _op_z = opcode & 0b00000111;
+        let _op_p = _op_y >> 1;
+        let cc = _op_y & 0b100;
+        let _op_q = _op_y % 2;
+        
+        if opcode == 0x00 {
+            println!("NOP");
+        } else if opcode == 0x10 {
+
+        }
+
+
+        Ok(())
+    }
+
     fn decode(&mut self, gamepack: &Memory) -> Result<(), OverflowError> {
 
         let opcode = self.fetch(gamepack);
