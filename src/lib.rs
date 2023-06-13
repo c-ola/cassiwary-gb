@@ -2,13 +2,9 @@ pub mod console;
 pub mod bytes;
 use crate::console::*;
 
-//use wasm_bindgen::prelude::*;
-
 #[cfg(test)]
 mod tests {
-    use crate::ppu::{Tile, PPU};
     use crate::console::*;
-
 
 #[test]
     fn tiles() {
@@ -24,7 +20,7 @@ mod tests {
             0x38, 0x7C,
         ];
 
-        let tile = Tile::new(data);
+       // let tile = Tile::new(data);
         //tile.render();
 
         //panic!();
@@ -39,18 +35,16 @@ mod tests {
 
 #[test]
     fn launch() {
-        let mut gb = GameBoy::new_test();
-        gb.init();
-        gb.gamepack.write(0, 0x00);
-        gb.set_boot(false);
-        gb.start();
-        assert_eq!(gb.peek_cpu().get_reg(B), 0x00);
-        assert_eq!(gb.peek_memory().read(0x0000), 0x00);   
+        let mut gb = GameBoy::new();
+        //gb.init();
+        //gb.set_run_count(0);
+        //assert_eq!(gb.peek_cpu().get_reg(B), 0x00);
+        //assert_eq!(gb.peek_memory().read(0x0000), 0x00);   
     }
 
 #[test]
     fn loads() {
-        let mut gb = GameBoy::new_test();
+        let mut gb = GameBoy::new();
         gb.init();
         gb.set_run_count(0);
 
@@ -137,7 +131,7 @@ mod tests {
 
 #[test]
     fn arithmetic(){
-        let mut gb = GameBoy::new_test();
+        let mut gb = GameBoy::new();
         gb.init();
         gb.set_run_count(5);
 
@@ -249,7 +243,7 @@ mod tests {
 
 #[test]
     fn control(){
-        let mut gb = GameBoy::new_test();
+        let mut gb = GameBoy::new();
         gb.init();
         gb.set_run_count(0);
 

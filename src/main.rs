@@ -22,6 +22,6 @@ fn main() -> Result<(), String>{
     let rom_path = parse_config(&args);
 
     let mut gb = GameBoy::new();
-    gb.init(rom_path);
+    gb.init_emu(rom_path);
     gb.run_emu()
 }

@@ -2,6 +2,8 @@ use crate::bytes::*;
 use crate::memory::*;
 use std::error::Error;
 use std::fmt;
+use std::time::{Instant, Duration};
+
 
 #[derive(Debug)]
 pub struct FailedCPUInstruction{
@@ -91,6 +93,9 @@ pub struct SharpSM83 {
 
 impl SharpSM83 {
     pub fn run(&mut self, gamepack: &Memory) -> Result<(), FailedCPUInstruction> {
+        
+        let start = Instant::now();
+
         let result = match self.decode(gamepack) {
             Ok(()) => Ok(()),
             Err(e) => {
@@ -98,6 +103,10 @@ impl SharpSM83 {
                 Err(FailedCPUInstruction{})
             }
         };
+
+        let instr_time = start.elapsed();
+        println!("cpu_speed: {:.5} Hz", 1.0/((instr_time.as_nanos() as f64)/ 1_000_000_000.0f64));
+
         self.print_info();
 
         result

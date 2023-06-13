@@ -9,11 +9,42 @@ use sdl2::rect::Point;
 
 
 const PALLETTE: [[u8; 4]; 4] = [
-    [0xFF, 0xFF, 0xFF, 0xFF],
-    [0xAA, 0xAA, 0xAA, 0xFF],
-    [0x55, 0x55, 0x55, 0xFF],
     [0x00, 0x00, 0x00, 0xFF],
+    [0x55, 0x55, 0x55, 0xFF],
+    [0xaa, 0xaa, 0xaa, 0xFF],
+    [0xff, 0xff, 0xff, 0xFF],
 ];
+
+
+const BIT_MASK: [u8; 8] = [
+    128, 64, 32, 16, 8, 4, 2, 1 
+];
+
+#[macro_export]
+macro_rules! bit {
+    ($a:expr, $b:expr) => {
+        {
+            $a & BIT_MASK[$b]
+        }
+    };
+}
+
+const VB_0: u16 = 0x8000; // used when lcdc bit 7 = 1
+const VB_1: u16 = 0x8800;
+const VB_2: u16 = 0x9000; // objects only
+
+//tile map areas
+const TMA_0: u16 = 0x9800;
+const TMA_1: u16 = 0x9C00;
+
+//registsers 
+const LCDC: u16 = 0xFF40; //
+
+fn decode_lcdc(memory: &Memory){
+    let lcdc = memory.read(LCDC);
+    
+    //lcd and ppu enable
+}
 
 #[derive(Copy, Clone)]
 struct Tile {
@@ -31,8 +62,8 @@ impl Tile {
     
     pub fn update(&mut self, index: u16, memory: &Memory) {
         for line in 0..8 {
-            self.raw_data[line][0] = memory.read( TB_0 + 16*index + line as u16);
-            self.raw_data[line][1] = memory.read( TB_0 + 16*index + line as u16 + 1);
+            self.raw_data[line][0] = memory.read(index + line as u16);
+            self.raw_data[line][1] = memory.read(index + line as u16 + 1);
             //let tile_line: u16 = merge_between_u8_u16(self.raw_data[line][1], self.raw_data[line][0]); 
             let a = self.raw_data[line][0];
             let b = self.raw_data[line][1];
@@ -41,8 +72,7 @@ impl Tile {
                 let mask = 0x80 >> pixel_index;
                 let _a = (a & mask) >> (7 - pixel_index);
                 let _b = (b & mask) >> (7 - pixel_index);
-                let id = _b + _a;
-               // println!("{a:#010b}, {b:#010b}, {id}");
+                let id = (_b << 1) + _a;
                 let color = PALLETTE[id as usize];
                 self.pixel_data[8 * line + pixel_index] = color;
             }
@@ -78,17 +108,38 @@ impl PPU {
             fg_px: [[0; 4]; PIXELBUFFER_SIZE],
         }
     }
-    
+ 
     pub fn update(&mut self, memory: &Memory){
+        
+        let lcdc = memory.read(LCDC);
+        
+        let enable = bit!(lcdc, 7) != 0;
+
+        let vram_bank = match bit!(lcdc, 4) {
+            0u8 => VB_0,
+            _ => VB_1
+        };
+
+        let w_tma = match bit!(lcdc, 6) {
+            0 => TMA_0,
+            _ => TMA_1
+        };
+
+        let bg_tma = match bit!(lcdc, 4) {
+            0 => TMA_0,
+            _ => TMA_1
+        };
+        
         for i in 0..TILEMAP_SIZE {
-            self.bg_map[i].update(i as u16, memory);
+            let index = memory.read(bg_tma + i as u16) as u16;
+            self.bg_map[i].update(index * 16 + vram_bank, memory);
         }
     }
 
     pub fn render(&self, canvas: &mut Canvas<Window>, texture: &mut Texture) -> Result<(), String> {
 
         let _result = canvas.with_texture_canvas(texture, |texture_canvas|{
-            
+
             texture_canvas.set_draw_color(Color::BLACK);
             texture_canvas.clear();
 

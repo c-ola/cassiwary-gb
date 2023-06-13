@@ -32,7 +32,6 @@ const SCREEN_WIDTH: u32 = 600;
 const SCREEN_HEIGHT: u32 = 600;
 
 pub struct GameBoy {
-    run_on_boot: bool,
     instruction_count: u16,
     accumulator: u32,
     cpu: SharpSM83,
@@ -45,7 +44,6 @@ impl GameBoy {
 
     pub fn new() -> GameBoy {
         GameBoy {
-            run_on_boot: true,
             accumulator: 0,
             instruction_count: 10000,
             cpu: SharpSM83::new(),
@@ -55,14 +53,14 @@ impl GameBoy {
         }
     }
 
-    pub fn init(&mut self, rom_path: Option<&str>) {
-        
-        println!("Initial Memory");
-        self.gamepack.init_memory(rom_path);
-        self.cpu.init_emu();
-        self.gamepack.print(0, 5);
-
+    pub fn init(&mut self) {
     }
+
+    pub fn init_emu(&mut self, rom_path: Option<&str>) {
+        self.cpu.init_emu();
+        self.gamepack.init_memory(rom_path);
+    }
+
 
     pub fn run_emu(&mut self) -> Result<(), String>{
 
@@ -82,8 +80,8 @@ impl GameBoy {
         let texture_creator = canvas.texture_creator();
 
         let mut texture = texture_creator
-        .create_texture_target(PixelFormatEnum::RGBA8888, 240, 240)
-        .map_err(|e| e.to_string())?;
+            .create_texture_target(PixelFormatEnum::RGBA8888, 240, 240)
+            .map_err(|e| e.to_string())?;
 
         canvas.clear();
 
@@ -103,7 +101,6 @@ impl GameBoy {
                 }
             }
 
-
             self.tick_cpu();
 
             self.ppu.update(&self.gamepack);
@@ -113,16 +110,13 @@ impl GameBoy {
             canvas.copy(&texture, None, Some(Rect::new(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT)))?;
             canvas.present();
 
-           // ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
+            // ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
         }
 
         //self.stop();
         Ok(())
     }
 
-    pub fn set_boot(&mut self, boot: bool) {
-        self.run_on_boot = boot;
-    }
 
     pub fn set_run_count(&mut self, count: u16) {
         self.instruction_count = count;
@@ -158,11 +152,6 @@ impl GameBoy {
     }
 
     pub fn start(&mut self) {
-
-        if !self.run_on_boot {
-            println!("not running");
-            return
-        }
 
         println!("Reading instructinos");
 
