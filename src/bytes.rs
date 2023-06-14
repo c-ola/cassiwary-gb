@@ -1,3 +1,46 @@
+
+
+#[macro_export]
+macro_rules! bit {
+    ($a:expr, $b:expr) => {
+
+        {
+            $a & (0b1 << $b)
+        }
+    };
+}   
+
+pub(crate) use bit;
+
+
+pub enum Shift {
+    LEFT,
+    RIGHT
+}
+
+impl Shift {
+    pub fn s_u8(&self, x: u8, bits: u8) -> u8 {
+        match self {
+            Shift::LEFT => x << bits,
+            Shift::RIGHT => x >> bits
+        }    
+    }
+
+    pub fn s_i8(&self, x: i8, bits: u8) -> i8 {
+        match self {
+            Shift::LEFT => x << bits,
+            Shift::RIGHT => x >> bits
+        }    
+    }
+}
+
+pub fn set_bit(x: u8, bit: u8, value: bool) -> u8 {
+    match value {
+        true => {x | (0b1 << bit)},
+        false => {x & !(0b1 << bit)}
+    }
+}
+
 pub fn cmpbit(x: u8, y: u8) -> bool {
     x & y == y
 }
@@ -8,7 +51,7 @@ pub fn maskbits(x: u8, y: u8) -> u8 {
 
 pub fn merge_between_u8_u16(lsb: u8, msb: u8) -> u16 {
     let mut result = 0u16;
-    
+
     for i in 0..8 {
         let mask = 1u8 << i;
         let a = (lsb & mask) as u16;
@@ -80,7 +123,11 @@ pub fn u16_add(a: u16, b: u16) -> (u16, bool, bool) {
 
 pub fn u16_sub(a: u16, b: u16) -> (u16, bool, bool) {
     (
-        (a as u32 + !b as u32) as u16,
+        if b > a {
+            u16_add(a, !b + 1).0
+        }else {
+            a - b
+        },
         has_bit_u16(a, 15) && !has_bit_u16(b, 15),
         has_bit_u16(a, 11) && !has_bit_u16(b, 11)
     )
@@ -97,9 +144,14 @@ pub fn u8_add(a: u8, b: u8) -> (u8, u8) {
 }
 
 pub fn u8_sub(a: u8, b: u8) -> (u8, u8) {
-    let mut result = (((a as u16 + !b as u16) as u8) >> 1, 0u8);
     let half_c = low_u8(b) > low_u8(a);
     let full_c = b > a;
+    let mut result = if full_c {
+        (!b + 1 + a, 0)
+    }else {
+        (a - b, 0)
+    };
+    println!("{a}, {b}, {}", result.0);
 
     result.1 = make_flag_2(result.0, full_c, half_c, 0b0100_0000);
 
@@ -136,6 +188,7 @@ pub fn u8_cmp (a: u8, b: u8) -> (u8, u8) {
 
 
 pub fn u8_to_u16(msb: u8, lsb: u8) -> u16 {
-    (lsb as u16) * (2 << 7) + msb as u16
+    lsb as u16 + msb as u16 * (2 << 7) 
+
 }
 

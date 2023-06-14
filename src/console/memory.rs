@@ -23,7 +23,7 @@ impl Memory {
     }
 
     pub fn init_memory(&mut self, rom_path: Option<&str>){
-        
+
         match rom_path {
             Some(game_rom) => {
                 match read(game_rom) {
@@ -38,10 +38,9 @@ impl Memory {
             },
             None => println!("No game rom was found: running boot rom only"),
         };
-
         let boot_rom = "gb_boot/DMG_ROM.bin";
 
-        match read(boot_rom) {
+       match read(boot_rom) {
             Ok(result) => {
                 for i in 0..0x0100 {
                     self.write(i, result[i as usize]);
@@ -49,6 +48,7 @@ impl Memory {
             },
             Err(error) => panic!("{error} boot rom error, file not found or incorrect file"),
         }
+
 
     }
 

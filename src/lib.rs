@@ -7,33 +7,6 @@ mod tests {
     use crate::console::*;
 
 #[test]
-    fn tiles() {
-
-        let data = [
-            0x3C, 0x7E,
-            0x42, 0x42,
-            0x42, 0x42,
-            0x42, 0x42,
-            0x7E, 0x5E,
-            0x7E, 0x0A,
-            0x7C, 0x56,
-            0x38, 0x7C,
-        ];
-
-       // let tile = Tile::new(data);
-        //tile.render();
-
-        //panic!();
-    }
-
-#[test]
-    fn tilemap(){
-        //let tilemap = PPU::new();
-        //tilemap.render();
-        // panic!();
-    }
-
-#[test]
     fn launch() {
         let mut gb = GameBoy::new();
         //gb.init();
@@ -74,7 +47,7 @@ mod tests {
         gb.write(0x03);
         gb.write(0xA1);
         gb.start();
-        assert_eq!(gb.peek_cpu().get_rr(DE), 0x03A1);
+        assert_eq!(gb.peek_cpu().get_rr(DE), 0xA103);
 
         //load HL, 0xFB02
         gb.inc_instr_count();
@@ -82,15 +55,15 @@ mod tests {
         gb.write(0xFF);
         gb.write(0x02);
         gb.start();
-        assert_eq!(gb.peek_cpu().get_rr(HL), 0xFF02);
+        assert_eq!(gb.peek_cpu().get_rr(HL), 0x02FF);
 
         //LD (HL+), A
         gb.inc_instr_count();
         gb.write(0x22);
         gb.start();
         let hl = gb.peek_cpu().get_rr(HL);
-        gb.gamepack.print(0xFF00, 1);
-        assert_eq!(hl, 0xFF03);
+        gb.gamepack.print(0x00FF, 1);
+        assert_eq!(hl, 0x0300);
         assert_eq!(gb.peek_memory().read(hl - 1), gb.peek_cpu().get_reg(A));
 
         //LD (HL), 0xE3
@@ -104,7 +77,6 @@ mod tests {
         gb.inc_instr_count();
         gb.write(0xF2);
         gb.start();
-        gb.gamepack.print(0xFF00, 1);
         assert_eq!(gb.peek_memory().read(0xFF03), gb.peek_cpu().get_reg(A));
 
         //LD SP, HL
@@ -117,15 +89,14 @@ mod tests {
         gb.inc_instr_count();
         gb.write(0b1101_0101);
         gb.start();
-        gb.gamepack.print(0xFF00, 1);
-        assert_eq!((gb.peek_memory().read(0xFF01), gb.peek_memory().read(0xFF02)), (0x03, 0xA1));
+        assert_eq!((gb.peek_memory().read(0x0003), gb.peek_memory().read(0x02FF)), (0x03, 0xA1));
 
         //POP rr
         gb.inc_instr_count();
         gb.write(0b1100_0001);
         gb.start();
         gb.gamepack.print(0xFF00, 1);
-        assert_eq!(gb.peek_cpu().get_rr(BC) ,0x03A1);
+        assert_eq!(gb.peek_cpu().get_rr(BC) ,0xA103);
     }
 
 
@@ -183,32 +154,32 @@ mod tests {
         gb.inc_instr_count();
         gb.write(0x91);
         gb.start();
-        assert_eq!(gb.peek_cpu().get_reg(A), 0x3E);
+        assert_eq!(gb.peek_cpu().get_reg(A), 125);
         assert_eq!(gb.peek_cpu().get_flag(), 0b0111_0000);
 
         // and e
         gb.inc_instr_count();
         gb.write(0xA3);
         gb.start();
-        assert_eq!(gb.peek_cpu().get_reg(A), 0x20);
+        assert_eq!(gb.peek_cpu().get_reg(A), 0x1);
 
         // or d
         gb.inc_instr_count();
         gb.write(0xB2);
         gb.start();
-        assert_eq!(gb.peek_cpu().get_reg(A), 0x23);
+        assert_eq!(gb.peek_cpu().get_reg(A), 161);
 
         // xor e
         gb.inc_instr_count();
         gb.write(0xAB);
         gb.start();
-        assert_eq!(gb.peek_cpu().get_reg(A), 0x82);
+        assert_eq!(gb.peek_cpu().get_reg(A), 162);
 
         // cp H
         gb.inc_instr_count();
         gb.write(0xBC);
         gb.start();
-        assert_eq!(gb.peek_cpu().get_flag(), 0b0110_0000);
+        assert_eq!(gb.peek_cpu().get_flag(), 0b0100_0000);
 
         //scf
         gb.inc_instr_count();
@@ -234,7 +205,7 @@ mod tests {
         gb.inc_instr_count();
         gb.write(0x09);
         gb.start();
-        assert_eq!(gb.peek_cpu().get_rr(HL), 0xB3BA + 0x3E10);
+        assert_eq!(gb.peek_cpu().get_rr(HL), (0xB3BA + 0x103e) as u16);
 
 
         //havent tested INC instructions or ADC or rotations
@@ -250,8 +221,8 @@ mod tests {
         //write out asm starting here
         //JP nn ; 0
         gb.write(0xC3);
-        gb.write(0x00);
         gb.write(0x07);
+        gb.write(0x00);
 
         //DI ; 3
         gb.write(0xF3);
@@ -264,27 +235,27 @@ mod tests {
         gb.write(0x03);
 
         //JP cc, nn ; 7
-        gb.write(0xC2);
-        gb.write(0x00);
-        gb.write(0x03); // jump to ; 3
+        gb.write(0xCA);
+        gb.write(0x03);
+        gb.write(0x00); // jump to ; 3
 
         //LD SP nn ; 10
         gb.write(0x31);
-        gb.write(0xf0);
         gb.write(0x00);
+        gb.write(0xf0);
 
         //call 0x0100 ; 13
         gb.write(0xCD);
-        gb.write(0x01);
-        gb.write(0x00); //; 15
+        gb.write(0x00);
+        gb.write(0x01); //; 15
 
         gb.write(0x00); // nop
 
         gb.write(0xF1); // pop AF (sets a to 0 for conditional call)
 
         gb.write(0xCC); // call c , nn
-        gb.write(0x01);
         gb.write(0x02);
+        gb.write(0x01);
 
         gb.write(0x00); // nop
 
@@ -307,7 +278,7 @@ mod tests {
         gb.inc_instr_count();
         gb.start();
         assert_eq!(gb.peek_cpu().pc, 0x03); // jp cc nn
-
+                                            //
         gb.inc_instr_count();
         gb.inc_instr_count();
         gb.inc_instr_count();

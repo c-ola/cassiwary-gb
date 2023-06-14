@@ -38,10 +38,12 @@ impl fmt::Display for InvalidRegError {
     }
 }
 
+//idk why this is here
 const XOFFSET: u8 = 3;
 const YOFFSET: u8 = 0;
 const REGMASK: u8 = 0b111u8;
 
+//register opcode mappings
 const B: u8 = 0x0;
 const C: u8 = 0x1;
 const D: u8 = 0x2;
@@ -50,14 +52,29 @@ const H: u8 = 0x4;
 const L: u8 = 0x5;
 const A: u8 = 0x7;
 const READ_HL: u8 = 0x6;
+
+//register view opcode mappings
 const BC: u8 = 0x0;
 const DE: u8 = 0x1;
 const HL: u8 = 0x2;
 const SP: u8 = 0x3;
 
+//flag bits
+const FLAG_Z: u8 = 7; // zero flag 
+const FLAG_N: u8 = 6; // subtraction flag
+const FLAG_H: u8 = 5; // half-carry flag
+const FLAG_C: u8 = 4; // full carry flag
+
+// reset memory locations
 const RST: [u8; 8] = [
     0x00, 0x08, 0x10, 0x18, 0x20, 0x28, 0x30, 0x38
 ];
+
+pub enum InstructionType {
+    NOP,
+    HALT,
+
+}
 
 pub enum Mode {
     EMU,
@@ -68,6 +85,8 @@ pub enum Mode {
 pub struct SharpSM83 {
     pub mem_write_stack: Vec<(u8, u16)>,
     pub mem_write: u8,
+    
+    machine_cycles: u32,
 
     // 8-bit general purpose
     a: u8,
@@ -92,6 +111,7 @@ pub struct SharpSM83 {
 }
 
 impl SharpSM83 {
+
     pub fn run(&mut self, gamepack: &Memory) -> Result<(), FailedCPUInstruction> {
         
         let start = Instant::now();
@@ -131,6 +151,8 @@ impl SharpSM83 {
             h: 0x00,
             l: 0x00,
             f: 0x00, // Z N H C 0 0 0 0
+            
+            machine_cycles: 0,
 
             ime: 0b0,
 
@@ -152,35 +174,16 @@ impl SharpSM83 {
 
         opcode
     }
-    
-
-    fn decode_instruction(&mut self, gamepack: &Memory) -> Result<(), String> {
-        let opcode = self.fetch(gamepack);
-        let _op_x = opcode >> 6;
-        let _op_y = (opcode & 0b00111000) >> 3;
-        let _op_z = opcode & 0b00000111;
-        let _op_p = _op_y >> 1;
-        let cc = _op_y & 0b100;
-        let _op_q = _op_y % 2;
-        
-        if opcode == 0x00 {
-            println!("NOP");
-        } else if opcode == 0x10 {
-
-        }
 
 
-        Ok(())
-    }
-
-    fn decode(&mut self, gamepack: &Memory) -> Result<(), OverflowError> {
+    fn decode(&mut self, gamepack: &Memory) -> Result<(), String> {
 
         let opcode = self.fetch(gamepack);
         let _op_x = opcode >> 6;
         let _op_y = (opcode & 0b00111000) >> 3;
         let _op_z = opcode & 0b00000111;
         let _op_p = _op_y >> 1;
-        let cc = _op_y & 0b100;
+        let cc = _op_y & 0b011;
         let _op_q = _op_y % 2;
 
         let high = high_u8(opcode);
@@ -189,6 +192,7 @@ impl SharpSM83 {
         if opcode == 0x00 {
             println!("NOP");
         } else if opcode == 0x10 {
+            self.stop = true;
             println!("Stop");
         } else if opcode == 0x76 {
             // 0b0111_0110 -> x = 110, y = 110
@@ -204,24 +208,17 @@ impl SharpSM83 {
         // 8-bit load / store instructions
 
         // load / store to view address
-        else if (low == 0xA || low == 0x2) && high < 0x4 {
+        else if _op_x == 0b00 && _op_z == 0b010 {
+            let loc = self.get_rr_mem(_op_p);
             println!("load / store to view");
-            if high_u8(opcode) < 0x4 {
-                let loc = self.get_rr(high_u8(opcode));
 
-                if low_u8(opcode) == 0xA {
-                    let n = self.read(loc, gamepack);
-                    self.set_reg(A, n);
-                } else {
-                    self.write(loc, self.get_reg(A));
-                }
-
-                if high_u8(opcode) == 0x3 {
-                    self.l = u8_sub(self.l, 1).0;
-                }else{
-                    self.l = u8_add(self.l, 1).0;
-                }
+            if _op_q != 0b0 {
+                let n = self.read(loc, gamepack);
+                self.set_reg(A, n);
+            } else {
+                self.write(loc, self.get_reg(A));
             }
+
         }
         // ldh and load / store to (nn)
         else if high_u8(opcode) >= 0xE && (low_u8(opcode) == 0xA || low_u8(opcode) == 0x2 || low_u8(opcode) == 0x0) {
@@ -231,7 +228,7 @@ impl SharpSM83 {
             if low_u8(opcode) == 0xA {
                 let lsb = self.fetch(gamepack);
                 let msb = self.fetch(gamepack);
-                loc = u8_to_u16(lsb, msb);
+                loc = u8_to_u16(msb, lsb);
             } else if low_u8(opcode) == 0x2 {
                 loc = u8_to_u16(0xFF, self.get_reg(C));
             } else if low_u8(opcode) == 0x0 {
@@ -248,23 +245,23 @@ impl SharpSM83 {
         // load r, r' / load r, n
         else if opcode >> 6 == 0b01 || 
             ((opcode < 0b0100_0000) && (low_u8(opcode) == 0x6 || low_u8(opcode) == 0xE)) {
-            println!("generic load");
-            let x = (opcode >> XOFFSET) & REGMASK;
-            let y = (opcode >> YOFFSET) & REGMASK;
+                println!("generic load");
+                let x = (opcode >> XOFFSET) & REGMASK;
+                let y = (opcode >> YOFFSET) & REGMASK;
 
-            if x == READ_HL && y == READ_HL && opcode >= 0b0100_0000 {
-                println!("halt");
-            } else {
-                
-                let n = if opcode < 0x40 {
-                    self.fetch(gamepack)
-                }else {
-                    self.get_reg_or_mem(y, gamepack)
-                };
+                if x == READ_HL && y == READ_HL && opcode >= 0b0100_0000 {
+                    println!("halt");
+                } else {
 
-                self.set_reg(x, n);
+                    let n = if opcode < 0x40 {
+                        self.fetch(gamepack)
+                    }else {
+                        self.get_reg_or_mem(y, gamepack)
+                    };
+
+                    self.set_reg(x, n);
+                }
             }
-        }
         // 16-bit load / store instructions
         // LDRRNNIMM    = 0b00xx0001
         // LDSPNN       = 0b00001000
@@ -275,7 +272,7 @@ impl SharpSM83 {
             let rr_key = opcode >> 4;
             let lsb = self.fetch(gamepack);
             let msb = self.fetch(gamepack);
-            let nn = u8_to_u16(lsb, msb);
+            let nn = u8_to_u16(msb, lsb);
             self.load_rr(rr_key, nn);
         }
         // write to memory from sp
@@ -283,9 +280,9 @@ impl SharpSM83 {
             println!("write to mem from sp");
             let lsb = self.fetch(gamepack);
             let msb = self.fetch(gamepack);
-            let loc = u8_to_u16(lsb, msb);
-            self.write(loc, high_u16(self.sp));
-            self.write(loc + 1, low_u16(self.sp));
+            let loc = u8_to_u16(msb, lsb);
+            self.write(loc, low_u16(self.sp));
+            self.write(loc + 1, high_u16(self.sp));
         }
         // load stack pointer from HL
         else if opcode == 0xF9 {
@@ -316,8 +313,8 @@ impl SharpSM83 {
             //push to stack 0b11xx0101
             if low == 0b0101 {
                 let rr = self.get_rr(rr_key);
-                let lsb = high_u16(rr);
-                let msb = low_u16(rr);
+                let lsb = low_u16(rr);
+                let msb = high_u16(rr);
                 self.sp -= 1;
                 self.write(self.sp, msb);
                 self.sp -= 1;
@@ -331,7 +328,7 @@ impl SharpSM83 {
                 self.sp += 1;
 
                 println!("{}", self.sp);
-                self.load_rr_views(rr_key, u8_to_u16(lsb, msb));
+                self.load_rr_views(rr_key, u8_to_u16(msb, lsb));
             }
         }
 
@@ -412,11 +409,10 @@ impl SharpSM83 {
 
         // increment / decrement registers
         else if  _op_x == 0 && (_op_z == 3 || _op_z == 4 || _op_z == 5) {
-            println!("increment");
+            println!("inc/dec");
             let x = (opcode >> 3) & 0b111;
-            let is_inc = !cmpbit(low, 0b0001) || (!cmpbit(low, 0b1000) && cmpbit(low, 0b0100));
-            let is_view = low == 0x3 || low == 0xB;
-            match is_view {
+            let is_inc = (_op_z == 5) || (_op_z == 3); 
+            match _op_z == 3 {
                 false => {
                     let r = self.get_reg(x);
 
@@ -426,18 +422,30 @@ impl SharpSM83 {
                     };
 
                     self.set_reg(x, result.0);
+                    self.f = result.1;
                 },
                 true => {
-                    // this is probably a mix of 2 subbing from the lsb register and then checking
-                    // the carry bit for  the msb register
-                    let r = self.get_rr(high);
+
+                    let r = self.get_rr(high); // since op_x = 0, rr is in 2 bits after that or
+                                               // just op_p
 
                     let result = match is_inc {
-                        true => u16_add(r, 1).0,
-                        false => u16_sub(r, 1).0,
+                        true => u16_add(r, 1),
+                        false => u16_sub(r, 1),
                     };
 
-                    self.load_rr(high, result);
+                    self.load_rr(high, result.0);
+
+                    if result.1 {
+                        self.f |= 0b1000_0000;
+                    }else{
+                        self.f &= 0b0111_1111;
+                    }
+                    if result.2 {
+                        self.f |= 0b0000_1000;
+                    }else{
+                        self.f &= 0b1111_0111;
+                    }
                 },
             };
         } 
@@ -453,7 +461,7 @@ impl SharpSM83 {
                 true => self.f & 0b1110_1111,
                 false => self.f | 0b0001_0000,
             };
-            
+
         }
 
         // daa
@@ -462,13 +470,13 @@ impl SharpSM83 {
             println!("daa");
             let mut correction = 0;
             let mut value = self.a;
-            
+
             let mut set_flag_c = 0u8;
 
             let n_flag = self.f & 0b0100_0000 != 0;
             let h_flag = self.f & 0b0010_0000 != 0;
             let c_flag = self.f & 0b0001_0000 != 0;
-            
+
             if h_flag || (!n_flag && (value & 0xf) > 0x9) {
                 correction |= 0x6;
             }
@@ -477,7 +485,7 @@ impl SharpSM83 {
                 correction |= 0x60;
                 set_flag_c = 0b0001_0000;
             }
-            
+
             if n_flag{ value -= correction } else { value += correction };
 
             value &= 0xff;
@@ -491,21 +499,21 @@ impl SharpSM83 {
 
             /*
 
-            match n_flag {
-                false => {
-                    if c_flag || self.a > 0x90 { self.a -= 0x60; self.f |= 0b0001_0000; }
-                    if h_flag || (self.a & 0x0F) > 0x09  {self.a -= 0x6; }
-                },
-                true => {
-                    if c_flag  { self.a -= 0x60; }
-                    if h_flag { self.a -= 0x6; }
-                },
-            }
+               match n_flag {
+               false => {
+               if c_flag || self.a > 0x90 { self.a -= 0x60; self.f |= 0b0001_0000; }
+               if h_flag || (self.a & 0x0F) > 0x09  {self.a -= 0x6; }
+               },
+               true => {
+               if c_flag  { self.a -= 0x60; }
+               if h_flag { self.a -= 0x6; }
+               },
+               }
 
-            if self.a == 0 { self.f |= 0b1000_0000 }
-            else { self.f &= 0b0111_1111 };
+               if self.a == 0 { self.f |= 0b1000_0000 }
+               else { self.f &= 0b0111_1111 };
 
-            self.f &= 0b1101_1111;*/
+               self.f &= 0b1101_1111;*/
         }
 
         //cpl
@@ -527,7 +535,7 @@ impl SharpSM83 {
             }else {
                 self.f & 0b0001_0000
             };
-            
+
             self.a <<= 1;
 
             self.a = match fill != 0 {
@@ -551,7 +559,7 @@ impl SharpSM83 {
             }else {
                 self.f & 0b0001_0000
             };
-            
+
             self.a >>= 1;
 
             self.a = match fill != 0 {
@@ -564,9 +572,10 @@ impl SharpSM83 {
                 false => self.f & !fill
             }; 
         }
-        
+
         else if opcode == 0xCB {
-            println!("PREFIX CB OR SOMETHING LIKE THAT");
+            println!("PREFIX CB");
+            self.cb_prefix(gamepack)?;
         }
 
         //--------CONTROL FLOW---------
@@ -576,7 +585,7 @@ impl SharpSM83 {
             println!("JP nn");
             let lsb = self.fetch(gamepack);
             let msb = self.fetch(gamepack);
-            self.pc = u8_to_u16(lsb, msb);
+            self.pc = u8_to_u16(msb, lsb);
         }
         //jump HL
         else if opcode == 0b11101001 {
@@ -588,61 +597,61 @@ impl SharpSM83 {
             println!("JP cc, nn");
             let lsb = self.fetch(gamepack);
             let msb = self.fetch(gamepack);
-            let nn = u8_to_u16(lsb, msb);
+            let nn = u8_to_u16(msb, lsb);
 
             if self.check_conditions(cc) {
                 self.pc = nn;
             }
         }
-        
+
         // JR e
         else if opcode == 0x18 {
             println!("JR e");
             let e = self.fetch(gamepack) as i16;
-            self.pc = (self.pc as i16 + e as i16) as u16;
+            //println!("condition is true {}", e as i8 as i16);
+            self.pc = (self.pc as i16 + e as i8 as i16 ) as u16;
         }
-        
+
         //jump cc, e
         else if _op_x == 0 && _op_z == 0 && _op_y >= 4 && _op_y <= 7 {
             println!("JP cc, e");
             let e = self.fetch(gamepack);
 
             if self.check_conditions(cc) {
-                self.pc = (self.pc as i16 + e as i16) as u16;
+                //println!("condition is true {}", e as i8 as i16);
+                self.pc = (self.pc as i16 + e as i8 as i16) as u16;
             }
         }
-        
+
         // CALL nn
         else if opcode == 0xCD {
             println!("CALL nn");
             let lsb = self.fetch(gamepack);
             let msb = self.fetch(gamepack);
-            let nn = u8_to_u16(lsb, msb);
-            
-            self.sp = u16_sub(self.sp, 1).0;
-            self.write(self.sp, low_u16(self.pc));
+            let nn = u8_to_u16(msb, lsb);
 
             self.sp = u16_sub(self.sp, 1).0;
             self.write(self.sp, high_u16(self.pc));
-            
+
+            self.sp = u16_sub(self.sp, 1).0;
+            self.write(self.sp, low_u16(self.pc));
+
             self.pc = nn;
         }
-        
+
         //CALL cc, nn
         else if _op_x == 3 && _op_z == 4 && _op_y < 4  {
             println!("CALL cc, nn");
             let lsb = self.fetch(gamepack);
             let msb = self.fetch(gamepack);
-            let nn = u8_to_u16(lsb, msb);
-
-            
-            self.sp = u16_sub(self.sp, 1).0;
-            self.write(self.sp, low_u16(self.pc));
-            
-            self.sp = u16_sub(self.sp, 1).0;
-            self.write(self.sp, high_u16(self.pc));
+            let nn = u8_to_u16(msb, lsb);
 
             if self.check_conditions(cc) {
+                self.sp = u16_sub(self.sp, 1).0;
+                self.write(self.sp, high_u16(self.pc));
+
+                self.sp = u16_sub(self.sp, 1).0;
+                self.write(self.sp, low_u16(self.pc));
                 self.pc = nn;
             }
         }
@@ -654,7 +663,7 @@ impl SharpSM83 {
             self.sp = u16_add(self.sp, 1).0;
             let msb = self.read(self.sp, gamepack);
             self.sp = u16_add(self.sp, 1).0;
-            self.pc = u8_to_u16(lsb, msb);
+            self.pc = u8_to_u16(msb, lsb);
         }
 
         //RET cc
@@ -665,7 +674,7 @@ impl SharpSM83 {
                 self.sp = u16_add(self.sp, 1).0;
                 let lsb = self.read(self.sp, gamepack);
                 self.sp = u16_add(self.sp, 1).0;
-                self.pc = u8_to_u16(lsb, msb);
+                self.pc = u8_to_u16(msb, lsb);
             }
         }
 
@@ -676,7 +685,7 @@ impl SharpSM83 {
             self.sp = u16_add(self.sp, 1).0;
             let msb = self.read(self.sp, gamepack);
             self.sp = u16_add(self.sp, 1).0;
-            self.pc = u8_to_u16(lsb, msb);
+            self.pc = u8_to_u16(msb, lsb);
             self.ime = 1;
         }
 
@@ -696,19 +705,94 @@ impl SharpSM83 {
         Ok(())
     }
 
+
+
+    fn cb_prefix(&mut self, gamepack: &Memory) -> Result<(), String> {
+        let opcode = self.fetch(gamepack);
+        let op_x = opcode >> 6;
+        let op_y = (opcode & 0b00111000) >> 3;
+        let op_z = opcode & 0b111;
+        let op_p = op_y >> 1;
+        let op_q = op_y & 0b1;
+
+        let n = op_y;
+        let r = self.get_reg_or_mem(op_z, gamepack);
+
+        match op_x {
+            0 => {
+                //rotate register or memory, this one is more complicated
+                // NOTE: for arithmetic shifts cast as i8
+                let shift = if op_q == 0 {
+                    Shift::LEFT
+                } else {
+                    Shift::RIGHT
+                };
+
+                match op_p {
+                    0 => {panic!("should not be here lol")},
+                    1 => {self.set_reg(op_z, shift.s_i8(r as i8, n) as u8)},
+                    2 => {self.set_reg(op_z, shift.s_u8(r, n))},
+                    3 => {
+                        if op_q == 0 {
+                            let hi = high_u8(r) >> 4;
+                            let lo = low_u8(r);
+                            self.set_reg(op_z, hi + lo << 4);
+                        }else{
+                            self.set_reg(op_z, shift.s_u8(r, n));
+                        }
+                    },
+                    _ => panic!("should not be here lol")
+                }
+
+                //panic!("wow");
+            },
+            1 => {
+                //test bit
+                self.set_flag(FLAG_Z, bit!(r, n) != 0);
+                self.set_flag(FLAG_N, false);
+                self.set_flag(FLAG_H, true);
+            },
+            2 => {
+                //reset
+                self.set_reg(op_z, set_bit(r, n, false));
+            },
+            3 => {
+                //set
+                self.set_reg(op_z, set_bit(r, n, true));
+            },
+            _ => panic!("how did i get here")
+        }
+
+        Ok(())
+    }
+
+    fn arithmetic(&mut self, gamepack: &Memory) -> Result<(), String> {
+
+        Ok(())
+    }
+
+
     pub fn check_conditions(&self, cc: u8) -> bool {
         let flag_z = self.f & 0b1000_0000 != 0;
         let flag_c = self.f & 0b0001_0000 != 0;
+        //println!("{flag_z}, {cc}");
 
         match cc {
-            0 => !flag_z,
-            1 => flag_z,
-            2 => !flag_c,
-            3 => flag_c,
+            0 => flag_z,
+            1 => !flag_z,
+            2 => flag_c,
+            3 => !flag_c,
             _ => false
         }
 
 
+    }
+
+    fn set_flag(&mut self, flag_bit: u8, value: bool) {
+        match value {
+            true => {self.f |= 0b1 << flag_bit},
+            false => {self.f &= !(0b1 << flag_bit)}
+        }
     }
 
     pub fn get_flag(&self) -> u8 {
@@ -718,6 +802,24 @@ impl SharpSM83 {
     fn set_rr_from_u16(&mut self, r1: u8, r2: u8, nn: u16) {
         self.set_reg(r1, (nn >> 8) as u8);
         self.set_reg(r2, nn as u8);
+    }
+
+    pub fn get_rr_mem(&mut self, rr_key: u8) -> u16 {
+        match rr_key {
+            BC => self.get_reg_view(B, C),
+            DE => self.get_reg_view(D, E),
+            0x2 => {
+                let r = self.get_reg_view(H, L);
+                self.load_rr(HL, u16_add(r, 1).0);
+                r
+            },
+            0x3 => {
+                let r = self.get_reg_view(H, L);
+                self.load_rr(HL, u16_sub(r, 1).0);
+                r
+            },
+            _ => 0x00,
+        }
     }
 
     pub fn get_rr(&self, rr_key: u8) -> u16 {

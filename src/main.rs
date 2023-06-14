@@ -7,7 +7,6 @@ use crate::console::*;
 
 use std::env;
 
-
 fn parse_config(args: &[String]) -> Option<&str> {
     println!("{}", args.len());
     return if args.len() < 2 {
@@ -23,5 +22,8 @@ fn main() -> Result<(), String>{
 
     let mut gb = GameBoy::new();
     gb.init_emu(rom_path);
-    gb.run_emu()
+    gb.run_emu();
+
+
+    Ok(())
 }

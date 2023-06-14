@@ -16,19 +16,6 @@ const PALLETTE: [[u8; 4]; 4] = [
 ];
 
 
-const BIT_MASK: [u8; 8] = [
-    128, 64, 32, 16, 8, 4, 2, 1 
-];
-
-#[macro_export]
-macro_rules! bit {
-    ($a:expr, $b:expr) => {
-        {
-            $a & BIT_MASK[$b]
-        }
-    };
-}
-
 const VB_0: u16 = 0x8000; // used when lcdc bit 7 = 1
 const VB_1: u16 = 0x8800;
 const VB_2: u16 = 0x9000; // objects only
@@ -64,7 +51,7 @@ impl Tile {
         for line in 0..8 {
             self.raw_data[line][0] = memory.read(index + line as u16);
             self.raw_data[line][1] = memory.read(index + line as u16 + 1);
-            //let tile_line: u16 = merge_between_u8_u16(self.raw_data[line][1], self.raw_data[line][0]); 
+
             let a = self.raw_data[line][0];
             let b = self.raw_data[line][1];
             
@@ -132,7 +119,7 @@ impl PPU {
         
         for i in 0..TILEMAP_SIZE {
             let index = memory.read(bg_tma + i as u16) as u16;
-            self.bg_map[i].update(index * 16 + vram_bank, memory);
+            self.bg_map[i].update(i as u16 * 16 + vram_bank, memory);
         }
     }
 
@@ -157,7 +144,6 @@ impl PPU {
                     texture_canvas.set_draw_color(color);
                     texture_canvas.draw_point(Point::new(x as i32, y as i32)).expect("cant draw point");
                 }
-
 
             }
 

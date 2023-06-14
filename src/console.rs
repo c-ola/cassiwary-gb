@@ -6,14 +6,22 @@ use crate::ppu::*;
 use crate::cpu::*;
 use crate::memory::*;
 
+use std::thread;
+use std::sync::mpsc;
+
 use sdl2::pixels::Color;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::PixelFormatEnum;
+use sdl2::render::CanvasBuilder;
 use std::time::Duration;
 use sdl2::render::{Canvas, Texture, TextureCreator};
 use sdl2::video::{Window, WindowContext};
 use sdl2::rect::{Rect, Point};
+use std::collections::HashSet;
+
+
+use std::time::{Instant};
 
 pub const B: u8 = 0x0;
 pub const C: u8 = 0x1;
@@ -28,8 +36,8 @@ pub const DE: u8 = 0x1;
 pub const HL: u8 = 0x2;
 pub const SP: u8 = 0x3;
 
-const SCREEN_WIDTH: u32 = 600;
-const SCREEN_HEIGHT: u32 = 600;
+const SCREEN_WIDTH: u32 = 960;
+const SCREEN_HEIGHT: u32 = 960;
 
 pub struct GameBoy {
     instruction_count: u16,
@@ -37,7 +45,6 @@ pub struct GameBoy {
     cpu: SharpSM83,
     pub gamepack: Memory,
     pub write_idx: u16,
-    ppu: PPU,
 }
 
 impl GameBoy {
@@ -49,7 +56,6 @@ impl GameBoy {
             cpu: SharpSM83::new(),
             gamepack: Memory::new(8 * KBYTE),
             write_idx: 0,
-            ppu: PPU::new(),
         }
     }
 
@@ -57,12 +63,12 @@ impl GameBoy {
     }
 
     pub fn init_emu(&mut self, rom_path: Option<&str>) {
-        self.cpu.init_emu();
+        //self.cpu.init_emu();
         self.gamepack.init_memory(rom_path);
     }
 
-
     pub fn run_emu(&mut self) -> Result<(), String>{
+        let mut ppu = PPU::new();
 
         let sdl_context = sdl2::init()?;
         let video_subsystem = sdl_context.video()?;
@@ -73,7 +79,6 @@ impl GameBoy {
             .position_centered()
             .build()
             .map_err(|e| e.to_string())?;
-
 
         let mut canvas = window.into_canvas().build().unwrap();
 
@@ -89,8 +94,12 @@ impl GameBoy {
         canvas.present();
 
         let mut event_pump = sdl_context.event_pump().unwrap();
-        
+
+        let mut prev_keys = HashSet::new();
+        let mut start = Instant::now();
         'running: loop {
+            
+            self.gamepack.write(0xFF00, 0x00);
             for event in event_pump.poll_iter() {
                 match event {
                     Event::Quit {..} |
@@ -99,18 +108,43 @@ impl GameBoy {
                         },
                     _ => {}
                 }
+
+            }
+            // Create a set of pressed Keys.
+            let keys = event_pump
+                .keyboard_state()
+                .pressed_scancodes()
+                .filter_map(Keycode::from_scancode)
+                .collect();
+
+            // Get the difference between the new and old sets.
+            let new_keys = &keys - &prev_keys;
+            let old_keys = &prev_keys - &keys;
+
+            if !new_keys.is_empty() || !old_keys.is_empty() {
+                println!("new_keys: {:?}\told_keys:{:?}", new_keys, old_keys);
             }
 
-            self.tick_cpu();
+           
+            if new_keys.contains(&Keycode::X) {
+                self.gamepack.write(0xFF00, 0xFF); 
+            }
 
-            self.ppu.update(&self.gamepack);
 
-            self.ppu.render(&mut canvas, &mut texture)?;
+            self.tick_cpu();  
 
-            canvas.copy(&texture, None, Some(Rect::new(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT)))?;
-            canvas.present();
 
+            // only updates the screen 60 times per second
+            if start.elapsed() > Duration::new(0, 1_000_000_000u32 / 60) {
+                ppu.update(&self.gamepack);
+                ppu.render(&mut canvas, &mut texture)?;
+
+                canvas.copy(&texture, None, Some(Rect::new(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT)))?;
+                canvas.present();
+                start = Instant::now();
+            }            
             // ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
+            prev_keys = keys;
         }
 
         //self.stop();
