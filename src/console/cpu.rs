@@ -1,8 +1,16 @@
+pub mod instruction;
+pub mod identifiers;
+
+use crate::cpu::instruction::*;
+use crate::cpu::identifiers::*;
+use Instruction::*;
+
 use crate::bytes::*;
 use crate::memory::*;
+
 use std::error::Error;
 use std::fmt;
-use std::time::{Instant, Duration};
+use std::time::Instant;
 
 
 #[derive(Debug)]
@@ -36,44 +44,6 @@ impl fmt::Display for InvalidRegError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Invalid specified register")
     }
-}
-
-//idk why this is here
-const XOFFSET: u8 = 3;
-const YOFFSET: u8 = 0;
-const REGMASK: u8 = 0b111u8;
-
-//register opcode mappings
-const B: u8 = 0x0;
-const C: u8 = 0x1;
-const D: u8 = 0x2;
-const E: u8 = 0x3;
-const H: u8 = 0x4;
-const L: u8 = 0x5;
-const A: u8 = 0x7;
-const READ_HL: u8 = 0x6;
-
-//register view opcode mappings
-const BC: u8 = 0x0;
-const DE: u8 = 0x1;
-const HL: u8 = 0x2;
-const SP: u8 = 0x3;
-
-//flag bits
-const FLAG_Z: u8 = 7; // zero flag 
-const FLAG_N: u8 = 6; // subtraction flag
-const FLAG_H: u8 = 5; // half-carry flag
-const FLAG_C: u8 = 4; // full carry flag
-
-// reset memory locations
-const RST: [u8; 8] = [
-    0x00, 0x08, 0x10, 0x18, 0x20, 0x28, 0x30, 0x38
-];
-
-pub enum InstructionType {
-    NOP,
-    HALT,
-
 }
 
 pub enum Mode {
@@ -112,6 +82,35 @@ pub struct SharpSM83 {
 
 impl SharpSM83 {
 
+    fn decode_v2(&mut self, gamepack: &Memory) -> Instruction {
+        let opcode = self.fetch(gamepack);
+        let op_x = opcode >> 6;
+        let op_y = (opcode & 0b00111000) >> 3;
+        let op_z = opcode & 0b00000111;
+        let op_p = op_y >> 1;
+        let cc = op_y & 0b011;
+        let op_q = op_y % 2;
+        
+        return match opcode {
+            // 8-bit Load/Store
+            
+
+            // CPU Control
+            0x00 => NOP,
+            0x10 => STOP,
+            0x76 => HALT,
+            0xF3 => DI,
+            0xE1 => EI,
+            0x3F => CCF,
+            0x37 => SCF,
+
+
+            
+            
+            _ => HALT
+        }
+    }
+
     pub fn run(&mut self, gamepack: &Memory) -> Result<(), FailedCPUInstruction> {
         
         let start = Instant::now();
@@ -134,6 +133,19 @@ impl SharpSM83 {
         result
     }
     
+    pub fn quick_init(&mut self){
+        self.a = 0;
+        self.f = 0;
+        self.b = 0xff;
+        self.c = 0x13;
+        self.d = 0;
+        self.e = 0xC1;
+        self.h = 0x84;
+        self.l = 0x03;
+        self.pc = 0x100;
+        self.sp = 0xFFFE;
+    }
+
     pub fn init_emu(&mut self) {
         self.mode = Mode::EMU;
     }
@@ -194,10 +206,12 @@ impl SharpSM83 {
         } else if opcode == 0x10 {
             self.stop = true;
             println!("Stop");
+            panic!("stop");
         } else if opcode == 0x76 {
             // 0b0111_0110 -> x = 110, y = 110
             self.stop = true;
             println!("halt");
+            panic!("halt");
         } else if opcode == 0xF3 {
             self.ime = 0;
             println!("DI");
@@ -214,9 +228,11 @@ impl SharpSM83 {
 
             if _op_q != 0b0 {
                 let n = self.read(loc, gamepack);
+                println!("LD {}, {}", n, "A");
                 self.set_reg(A, n);
             } else {
                 self.write(loc, self.get_reg(A));
+                println!("LD {}, {}", loc, "A");
             }
 
         }
@@ -286,7 +302,7 @@ impl SharpSM83 {
         }
         // load stack pointer from HL
         else if opcode == 0xF9 {
-            println!("load sp from hl");
+            println!("LD SP, HL");
             self.load_rr(SP, self.get_reg_view(H, L));
         } 
         else if opcode == 0xF8 {
@@ -410,8 +426,8 @@ impl SharpSM83 {
         // increment / decrement registers
         else if  _op_x == 0 && (_op_z == 3 || _op_z == 4 || _op_z == 5) {
             println!("inc/dec");
-            let x = (opcode >> 3) & 0b111;
-            let is_inc = (_op_z == 5) || (_op_z == 3); 
+            let x = _op_y;
+            let is_inc = low == 3 || low == 4 || low == 0xC; 
             match _op_z == 3 {
                 false => {
                     let r = self.get_reg(x);
@@ -631,10 +647,10 @@ impl SharpSM83 {
             let nn = u8_to_u16(msb, lsb);
 
             self.sp = u16_sub(self.sp, 1).0;
-            self.write(self.sp, high_u16(self.pc));
+            self.write(self.sp, low_u16(self.pc));
 
             self.sp = u16_sub(self.sp, 1).0;
-            self.write(self.sp, low_u16(self.pc));
+            self.write(self.sp, high_u16(self.pc));
 
             self.pc = nn;
         }
@@ -648,10 +664,10 @@ impl SharpSM83 {
 
             if self.check_conditions(cc) {
                 self.sp = u16_sub(self.sp, 1).0;
-                self.write(self.sp, high_u16(self.pc));
+                self.write(self.sp, low_u16(self.pc));
 
                 self.sp = u16_sub(self.sp, 1).0;
-                self.write(self.sp, low_u16(self.pc));
+                self.write(self.sp, high_u16(self.pc));
                 self.pc = nn;
             }
         }
@@ -659,9 +675,9 @@ impl SharpSM83 {
         //RET
         else if opcode == 0xC9 {
             println!("RET");
-            let lsb = self.read(self.sp, gamepack);
-            self.sp = u16_add(self.sp, 1).0;
             let msb = self.read(self.sp, gamepack);
+            self.sp = u16_add(self.sp, 1).0;
+            let lsb = self.read(self.sp, gamepack);
             self.sp = u16_add(self.sp, 1).0;
             self.pc = u8_to_u16(msb, lsb);
         }
@@ -694,9 +710,9 @@ impl SharpSM83 {
             println!("RST");
             let n = RST[_op_y as usize];
             self.sp = u16_sub(self.sp, 1).0;
-            self.write(self.sp, high_u16(self.pc));
-            self.sp = u16_sub(self.sp, 1).0;
             self.write(self.sp, low_u16(self.pc));
+            self.sp = u16_sub(self.sp, 1).0;
+            self.write(self.sp, high_u16(self.pc));
 
             self.pc = u8_to_u16(n, 0x00);
 
@@ -765,12 +781,20 @@ impl SharpSM83 {
 
         Ok(())
     }
+    
+    fn decompile(gamepack: &Memory) {
+        let start = 0;
+        let end = 100;
+        let data = gamepack.get_data();
 
-    fn arithmetic(&mut self, gamepack: &Memory) -> Result<(), String> {
-
-        Ok(())
+        for instruction in data {
+        
+        }
     }
 
+    fn decompile_instr(instruction: u8) {
+    
+    }
 
     pub fn check_conditions(&self, cc: u8) -> bool {
         let flag_z = self.f & 0b1000_0000 != 0;
@@ -918,8 +942,8 @@ impl SharpSM83 {
 
     pub fn print_info(&self) {
         match self.mode {
-            Mode::EMU => (),
             Mode::CPU => println!("{:#?}", self),
+            Mode::EMU => (),
         }
 
     }

@@ -62,7 +62,7 @@ mod tests {
         gb.write(0x22);
         gb.start();
         let hl = gb.peek_cpu().get_rr(HL);
-        gb.gamepack.print(0x00FF, 1);
+        //gb.gamepack.print(0x00FF, 1);
         assert_eq!(hl, 0x0300);
         assert_eq!(gb.peek_memory().read(hl - 1), gb.peek_cpu().get_reg(A));
 
@@ -95,8 +95,16 @@ mod tests {
         gb.inc_instr_count();
         gb.write(0b1100_0001);
         gb.start();
-        gb.gamepack.print(0xFF00, 1);
+        //gb.gamepack.print(0xFF00, 1);
         assert_eq!(gb.peek_cpu().get_rr(BC) ,0xA103);
+    }
+
+#[test]
+    fn prefix_instructions() {
+        let mut gb = GameBoy::new();
+        gb.init();
+        
+        gb.write(0b0011_1110);
     }
 
 
@@ -312,30 +320,3 @@ mod tests {
         assert_eq!(gb.peek_cpu().pc, 0x3800);   // rst 3 return addr
     }
 }
-/*
-   pub fn set_panic_hook() {
-// When the `console_error_panic_hook` feature is enabled, we can call the
-// `set_panic_hook` function at least once during initialization, and then
-// we will get better error messages if our code ever panics.
-//
-// For more details see
-// https://github.com/rustwasm/console_error_panic_hook#readme
-#[cfg(feature = "console_error_panic_hook")]
-console_error_panic_hook::set_once();
-}
-
-#[wasm_bindgen]
-extern {
-pub fn alert(s: &str);
-}
-
-// When the `wee_alloc` feature is enabled, use `wee_alloc` as the global
-// allocator.
-#[cfg(feature = "wee_alloc")]
-#[global_allocator]
-static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
-
-#[wasm_bindgen]
-pub fn greet(name: &str) {
-alert(&format!("Hello, {}!", name));
-}*/

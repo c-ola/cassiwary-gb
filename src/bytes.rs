@@ -161,7 +161,7 @@ pub fn u8_sub(a: u8, b: u8) -> (u8, u8) {
 pub fn u8_and (a: u8, b: u8) -> (u8, u8) {
     let mut result = (a & b, 0u8);
 
-    result.1 = 0b0010_0000 + if result.0 == 0 {0b1000_000} else { 0b0};
+    result.1 = 0b0010_0000 + if result.0 == 0 {0b1000_0000} else { 0b0};
 
     result
 }
@@ -169,7 +169,7 @@ pub fn u8_and (a: u8, b: u8) -> (u8, u8) {
 pub fn u8_xor (a: u8, b: u8) -> (u8, u8) {
     let mut result = (a ^ b, 0u8);
 
-    result.1 = if result.0 == 0 {0b1000_000} else { 0b0};
+    result.1 = if result.0 == 0 {0b1000_0000} else { 0b0};
 
     result
 }
@@ -177,7 +177,7 @@ pub fn u8_xor (a: u8, b: u8) -> (u8, u8) {
 pub fn u8_or (a: u8, b: u8) -> (u8, u8) {
     let mut result = (a | b, 0u8);
 
-    result.1 = 0b0000_0000 + if result.0 == 0 {0b1000_000} else { 0b0};
+    result.1 = 0b0000_0000 + if result.0 == 0 {0b1000_0000} else { 0b0};
 
     result
 }

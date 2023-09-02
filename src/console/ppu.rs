@@ -1,20 +1,18 @@
 use crate::console::Memory;
 use crate::bytes::*;
 
-
 use sdl2::pixels::Color;
 use sdl2::render::{Texture, Canvas};
 use sdl2::video::{Window};
 use sdl2::rect::Point;
 
-
-const PALLETTE: [[u8; 4]; 4] = [
-    [0x00, 0x00, 0x00, 0xFF],
-    [0x55, 0x55, 0x55, 0xFF],
-    [0xaa, 0xaa, 0xaa, 0xFF],
+const PALLETTE: [[u8; 4]; 4] = [    
     [0xff, 0xff, 0xff, 0xFF],
-];
+    [0xaa, 0xaa, 0xaa, 0xFF],
+    [0x55, 0x55, 0x55, 0xFF],
+    [0x00, 0x00, 0x00, 0xFF],
 
+];
 
 const VB_0: u16 = 0x8000; // used when lcdc bit 7 = 1
 const VB_1: u16 = 0x8800;
@@ -80,9 +78,9 @@ const TB_0: u16 = 0x8000;
 
 pub struct PPU {
     bg_map: [Tile; TILEMAP_SIZE],
-    fg_map: [Tile; TILEMAP_SIZE],
+    w_map: [Tile; TILEMAP_SIZE],
     bg_px: [[u8; 4]; PIXELBUFFER_SIZE],
-    fg_px: [[u8; 4]; PIXELBUFFER_SIZE],
+    w_px: [[u8; 4]; PIXELBUFFER_SIZE],
 
 }
 
@@ -90,9 +88,9 @@ impl PPU {
     pub fn new() -> PPU {
         PPU {
             bg_map:[Tile::new(); TILEMAP_SIZE],
-            fg_map:[Tile::new(); TILEMAP_SIZE],
+            w_map:[Tile::new(); TILEMAP_SIZE],
             bg_px: [[0; 4]; PIXELBUFFER_SIZE],
-            fg_px: [[0; 4]; PIXELBUFFER_SIZE],
+            w_px: [[0; 4]; PIXELBUFFER_SIZE],
         }
     }
  
@@ -116,10 +114,12 @@ impl PPU {
             0 => TMA_0,
             _ => TMA_1
         };
-        
+
         for i in 0..TILEMAP_SIZE {
             let index = memory.read(bg_tma + i as u16) as u16;
-            self.bg_map[i].update(i as u16 * 16 + vram_bank, memory);
+            //self.bg_map[i].update(index + vram_bank, memory);
+            self.bg_map[i].update(index + vram_bank, memory);
+            //self.w_map[i].update(index + vram_bank, memory);
         }
     }
 

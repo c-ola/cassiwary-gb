@@ -20,6 +20,7 @@ use sdl2::video::{Window, WindowContext};
 use sdl2::rect::{Rect, Point};
 use std::collections::HashSet;
 
+use std::fs::read;
 
 use std::time::{Instant};
 
@@ -45,6 +46,9 @@ pub struct GameBoy {
     cpu: SharpSM83,
     pub gamepack: Memory,
     pub write_idx: u16,
+    rom_path: String,
+    verbose: bool,
+    has_cartridge: bool,
 }
 
 impl GameBoy {
@@ -56,15 +60,64 @@ impl GameBoy {
             cpu: SharpSM83::new(),
             gamepack: Memory::new(8 * KBYTE),
             write_idx: 0,
+            rom_path: String::new(),
+            verbose: false,
+            has_cartridge: false,
         }
     }
 
-    pub fn init(&mut self) {
+    pub fn init(&mut self, ) {
+        
     }
 
-    pub fn init_emu(&mut self, rom_path: Option<&str>) {
-        //self.cpu.init_emu();
-        self.gamepack.init_memory(rom_path);
+    pub fn set_verbose(&mut self, v: Option<String>) {
+        match v {
+            Some(x) => {
+                if x == "true" {
+                    self.verbose = true;
+                }
+            },
+            None => self.verbose = false,
+        }
+    }
+
+    pub fn load_rom(&mut self, rom_path: Option<String>) {
+
+        for i in 0x104..0x14F {
+            self.gamepack.write(i as u16, 0xFF);
+        }
+
+        match rom_path {
+            Some(game_rom) => {
+                match read(game_rom) {
+                    Ok(buffer) => {
+                        for i in 0..buffer.len() {
+                            self.gamepack.write(i as u16, buffer[i]);
+                        }
+                        self.has_cartridge = true;
+                    }
+                    Err(error) => panic!("{error} no game rom was specified or found"),
+                }
+
+            },
+            None => match read(BOOT_ROM_PATH) {
+                Ok(result) => {
+                    for i in 0..0x0100 {
+                        self.gamepack.write(i, result[i as usize]);
+                    }
+                },
+                Err(error) => panic!("{error} boot rom error, file not found or incorrect file"),
+            }
+        };
+
+        match read(BOOT_ROM_PATH) {
+            Ok(result) => {
+                for i in 0..0x0100 {
+                    //self.gamepack.write(i, result[i as usize]);
+                }
+            },
+            Err(error) => panic!("{error} boot rom error, file not found or incorrect file"),
+        }
     }
 
     pub fn run_emu(&mut self) -> Result<(), String>{
@@ -97,9 +150,11 @@ impl GameBoy {
 
         let mut prev_keys = HashSet::new();
         let mut start = Instant::now();
+        let mut cpu_clock = Instant::now();
+
         'running: loop {
-            
-            self.gamepack.write(0xFF00, 0x00);
+
+            //self.gamepack.write(0xFF00, 0x00);
             for event in event_pump.poll_iter() {
                 match event {
                     Event::Quit {..} |
@@ -124,18 +179,22 @@ impl GameBoy {
             if !new_keys.is_empty() || !old_keys.is_empty() {
                 println!("new_keys: {:?}\told_keys:{:?}", new_keys, old_keys);
             }
+            
+            //if cpu_clock.elapsed() > Duration::new(0, 1_000_000_000u32/100000) {          
+            
+            //}
+            
 
-           
-            if new_keys.contains(&Keycode::X) {
-                self.gamepack.write(0xFF00, 0xFF); 
+            if self.peek_cpu().pc != 0x0100 {
+                self.tick_cpu()
             }
 
-
-            self.tick_cpu();  
-
+            if new_keys.contains(&Keycode::D) {
+                // self.tick_cpu();  
+            }
 
             // only updates the screen 60 times per second
-            if start.elapsed() > Duration::new(0, 1_000_000_000u32 / 60) {
+            if start.elapsed() > Duration::new(0, 1_000_000_000u32 / 60){
                 ppu.update(&self.gamepack);
                 ppu.render(&mut canvas, &mut texture)?;
 
@@ -147,7 +206,7 @@ impl GameBoy {
             prev_keys = keys;
         }
 
-        //self.stop();
+        self.stop();
         Ok(())
     }
 
@@ -180,9 +239,11 @@ impl GameBoy {
 
     }
 
-    pub fn stop(&self) {
-        self.log_memory();
-        self.gamepack.print(0x8000, 100);
+    pub fn stop(&self) {    
+        if self.verbose {
+            self.log_memory();
+            self.gamepack.print(0, 100);
+        }
     }
 
     pub fn start(&mut self) {
