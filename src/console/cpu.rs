@@ -222,7 +222,7 @@ impl SharpSM83 {
         // 8-bit load / store instructions
 
         // load / store to view address
-        else if _op_x == 0b00 && _op_z == 0b010 {
+        else if _op_x == 0b10 && _op_z == 0b010 {
             let loc = self.get_rr_mem(_op_p);
             println!("load / store to view");
 
