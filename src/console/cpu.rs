@@ -308,22 +308,160 @@ impl SharpSM83 {
         }
     }
 
-    pub fn execute(&mut self, instr: Instruction) {
+    pub fn execute(&mut self, instr: Instruction, memory: &Memory) {
         eprintln!("{:?}", instr);
         match instr {
             ErrInstr{opcode} => {
                 match opcode {
                     0xD3 | 0xE3 | 0xE4 | 0xF4 | 0xDB | 0xEB | 0xEC | 0xFC | 0xDD | 0xED | 0xFD => eprintln!("Instruction Undefined"),
-                _ => panic!("Invalid Instruction {opcode}"),
+                _ => panic!("Invalid Instruction {opcode:#010b}"),
                 }
             },
             NOP => (),
-            STOP => {
-                self.write(0xFFFF, 0xFF);
+            STOP => println!("stop"),
+            HALT => println!("halt"),
+            DI => self.ime = 0,
+            EI => self.ime = 1,
+            LDRwR(r1, r2) => self.set_reg(r1, self.get_reg(r2)),
+            LDRwN(r) => {
+                let n = self.fetch(memory);
+                self.set_reg(r, n);
             },
-            EI => {
-                self.set_reg(A, 10);
+            LDH(from, n) => {
+                let loc = u8_to_u16(0xFF, match n {
+                    true => self.fetch(memory),
+                    false => self.get_reg(C),
+                });
+                match from {
+                    false => {self.set_reg(A, self.read(loc, memory))}
+                    true => {self.write(loc, self.get_reg(A))}
+                } 
             }
+            LDAwNNa(from) => {
+                let lsb = self.fetch(memory);
+                let msb = self.fetch(memory);
+                let loc = u8_to_u16(msb, lsb);
+                match from {
+                    false => {self.set_reg(A, self.read(loc, memory))}
+                    true => {self.write(loc, self.get_reg(A))}
+                } 
+            },
+            LDRRawA(rr) => self.write(self.get_rr(rr), self.get_reg(A)),
+            LDAwRRa(rr) => self.set_reg(A, self.read(self.get_rr(rr), memory)),
+            LDrrnn(rr) => {
+                let lsb = self.fetch(memory);
+                let msb = self.fetch(memory);
+                let nn = u8_to_u16(msb, lsb);
+                self.load_rr(rr, nn);
+            },
+            LDNNawSP => {
+                let lsb = self.fetch(memory);
+                let msb = self.fetch(memory);
+                let loc = u8_to_u16(msb, lsb);
+                self.write(loc, low_u16(self.sp));
+                self.write(loc + 1, high_u16(self.sp));
+            },
+            PUSHrr(rr) => {
+                let rr = self.get_rr(rr);
+                let lsb = low_u16(rr);
+                let msb = high_u16(rr);
+                self.sp -= 1;
+                self.write(self.sp, msb);
+                self.sp -= 1;
+                self.write(self.sp, lsb);
+            },
+            POPrr(rr) => {
+                let lsb = self.read(self.sp, &memory);
+                self.sp += 1;
+                let msb = self.read(self.sp, &memory);
+                self.sp += 1;
+                self.load_rr_views(rr, u8_to_u16(msb, lsb));
+            },
+            LDHLwSP => {
+                let e = self.fetch(memory);
+                let result = i16_add(self.f as i16, e as i16);
+                self.load_rr(HL, result.0);
+                if result.1 {
+                    self.f |= 0b1000_0000;
+                }else{
+                    self.f &= 0b0111_1111;
+                }
+                if result.2 {
+                    self.f |= 0b0000_1000;
+                }else{
+                    self.f &= 0b1111_0111;
+                }
+            }
+            LDSPwHL => {
+                self.load_rr(SP, self.get_reg_view(H, L));
+            },
+            Add(_) | Sub(_) | And(_) | Or(_) | Adc(_) | Sbc(_) | Xor(_) | Cmp(_) | Addn | Subn | Andn | Orn | Adcn | Sbcn | Xorn | Cmpn => {
+                let n = match instr {
+                    Addn | Subn | Andn | Orn | Adcn | Sbcn | Xorn | Cmpn => self.fetch(memory),
+                    Add(r) | Sub(r) | And(r) | Or(r) | Adc(r) | Sbc(r) | Xor(r) | Cmp(r) => self.get_reg(r),
+                    _ => panic!("not supposed to get here")
+                };
+                let result = match instr { //kinda yuck
+                    Add(_) | Addn => u8_add(self.a, n),
+                    Sub(_) | Subn => u8_sub(self.a, n),
+                    And(_) | Andn => u8_and(self.a, n),
+                    Or(_) | Orn => u8_or(self.a, n),
+                    Adc(_) | Adcn => u8_add(self.a, u8_add(n, self.f & 0b0010_000).0),
+                    Sbc(_) | Sbcn => u8_sub(self.a, u8_add(n, self.f & 0b0010_000).0),
+                    Xor(_) | Xorn => u8_xor(self.a, n),
+                    Cmp(_) | Cmpn => u8_cmp(self.a, n),
+
+                    _ => (0, 0)
+                };
+                self.set_reg(A, result.0);
+                self.f = low_u8(self.f) + result.1;    
+            },
+            DAA => {
+                let mut correction = 0;
+                let mut value = self.a;
+
+                let mut set_flag_c = 0u8;
+
+                let n_flag = self.f & 0b0100_0000 != 0;
+                let h_flag = self.f & 0b0010_0000 != 0;
+                let c_flag = self.f & 0b0001_0000 != 0;
+
+                if h_flag || (!n_flag && (value & 0xf) > 0x9) {
+                    correction |= 0x6;
+                }
+
+                if c_flag || (!n_flag && value > 0x99) {
+                    correction |= 0x60;
+                    set_flag_c = 0b0001_0000;
+                }
+
+                if n_flag{ value -= correction } else { value += correction };
+
+                value &= 0xff;
+
+                let set_flag_z = if value == 0 { 0b1000_0000} else { 0 };  
+
+                self.f &= !0b1011_0000;
+                self.f |= set_flag_c | set_flag_z;
+
+                self.a = value;
+            },
+            SCF | CCF => {
+                let c_flag = match instr {
+                    SCF => self.f & 0b0001_0000,
+                    CCF => 0b0,
+                    _ => panic!("should not be here (scf/ccf error)")
+                };
+                self.f = match c_flag != 0 {
+                    true => self.f & 0b1110_1111,
+                    false => self.f | 0b0001_0000,
+                };
+            },
+            CPL => {
+                self.a = !self.a;
+                self.f |= 0b0110_0000;
+            },
+
             _ => println!("Instruction not matched"),
         }
 
@@ -390,7 +528,7 @@ impl SharpSM83 {
           };*/
 
         let instruction = self.decode_instruction(gamepack);
-        self.execute(instruction);
+        self.execute(instruction, gamepack);
 
 
         let instr_time = start.elapsed();
@@ -776,7 +914,7 @@ impl SharpSM83 {
         }
 
         //cpl
-        else if opcode == 0x2F {
+        else if opcode  == 0x2F {
             println!("cpl");
             self.a = !self.a;
             self.f |= 0b0110_0000;

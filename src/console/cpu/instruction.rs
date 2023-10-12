@@ -13,7 +13,7 @@ pub enum Instruction {
     LDAwRRa(u8),
 
     /*
-     * 16-bit Load
+    * 16-bit Load
      */
     LDrrnn(u8),
     LDNNawSP,
@@ -49,8 +49,8 @@ pub enum Instruction {
      */
     DAA,
     SCF,
-    CPL,
     CCF,
+    CPL,
 
     /*
      * 16-bit Arithmetic/Logic

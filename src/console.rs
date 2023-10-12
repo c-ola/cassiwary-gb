@@ -175,10 +175,9 @@ impl GameBoy {
 
 
             if self.peek_cpu().pc != 0x0100 {
-            //    self.tick_cpu()
+                self.tick_cpu()
             }
-            //self.tick_cpu();
-            
+
             if new_keys.contains(&Keycode::D) {
                 // self.tick_cpu();  
             }
