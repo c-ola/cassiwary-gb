@@ -1,8 +1,10 @@
 pub mod instruction;
 pub mod identifiers;
 
+use crate::console::regids::*;
 use crate::cpu::instruction::*;
 use crate::cpu::identifiers::*;
+
 use Instruction::*;
 
 use crate::bytes::*;
@@ -55,7 +57,7 @@ pub enum Mode {
 pub struct SharpSM83 {
     pub mem_write_stack: Vec<(u8, u16)>,
     pub mem_write: u8,
-    
+
     machine_cycles: u32,
 
     // 8-bit general purpose
@@ -82,7 +84,7 @@ pub struct SharpSM83 {
 
 impl SharpSM83 {
 
-    fn decode_v2(&mut self, gamepack: &Memory) -> Instruction {
+    fn decode_instruction(&mut self, gamepack: &Memory) -> Instruction {
         let opcode = self.fetch(gamepack);
         let op_x = opcode >> 6;
         let op_y = (opcode & 0b00111000) >> 3;
@@ -90,49 +92,244 @@ impl SharpSM83 {
         let op_p = op_y >> 1;
         let cc = op_y & 0b011;
         let op_q = op_y % 2;
+
+        return if opcode == 0x00 {
+            NOP
+        } else if opcode == 0x10 {
+            STOP
+        } else if opcode == 0x76 {
+            HALT
+        } else if opcode == 0xF3 {
+            DI
+        } else if opcode == 0xFB {
+            EI
+        }
+        // 8-bit load / store instructions registers
+        // LD r r
+        else if op_x == 0b01 {
+            LDRwR(op_y, op_z)
+        }
+        // LD r n
+        else if op_x == 0b00 && op_z == 0b110{
+            LDRwN(op_y)
+        }
+        // LDH
+        else if op_x == 0b11 && op_y & 0b001 == 0b000 && op_z & 0b101 == 0b000 {
+            LDH(op_p == 0b100, op_z == 0b000)
+        }
+        // LD r (nn)
+        else if op_x == 0b11 && op_y & 0b101 == 0b101 && op_z == 0b010 {
+            LDAwNNa(op_y == 0b101)
+        }
+        // LD (rr) A, LD A (rr)
+        else if op_x == 0b00 && op_z == 0b010{
+            if op_y == 0b0 {
+                LDRRawA(op_p)
+            }
+            else {
+                LDAwRRa(op_p)
+            }
+        }
+
+        // 16-bit loads
+        // LD rr nn
+        else if op_x == 0b00 && op_q == 0b0 && op_z == 0b001 {
+            LDrrnn(op_p)
+        }
+        //LD (nn) SP
+        else if opcode == 0x08 {
+            LDNNawSP
+        }
+        // load stack pointer from HL
+        else if opcode == 0xF9 {
+            LDSPwHL
+        } 
+        else if opcode == 0xF8 {
+            LDHLwSP
+        }
+        // push rr
+        else if op_x == 0b11 && op_q == 0 && op_z == 0b101{
+            PUSHrr(op_p)
+        }
+        // pop rr
+        else if op_x == 0b11 && op_q == 0 && op_z == 0b001{
+            POPrr(op_p)
+        }
+
+        //-----------ARITHMETIC---------        
+
+        //add, sub, adc, subc, and, or, xor, cp 
+        else if op_x == 0b10 && op_q == 0b0 {
+            match op_p {
+                0 => Add(op_z),
+                1 => Sub(op_z),
+                2 => And(op_z),
+                3 => Or(op_z),
+                _ => ErrInstr{opcode},
+            }
+        }
+        else if op_x == 0b10 && op_q == 0b1 {
+            match op_p {
+                0 => Adc(op_z),
+                1 => Sbc(op_z),
+                2 => Xor(op_z),
+                3 => Cmp(op_z),
+                _ => ErrInstr{opcode},
+            }
+        }
+        // arithmetic with n
+        else if op_x == 0b11 && op_z == 0b110 {
+            match op_y {
+                0b000 => Addn,
+                0b001 => Adcn,
+                0b010 => Subn,
+                0b011 => Sbcn,
+                0b100 => Andn,
+                0b101 => Xorn,
+                0b110 => Orn,
+                0b111 => Cmpn,
+                _ => ErrInstr{opcode},
+            }
+        } 
+        // increment / decrement registers
+        else if op_x == 0b00 && op_z == 0b100 {
+            IncR(op_p)
+        }
+        else if op_x == 0b00 && op_z == 0b101 {
+            DecR(op_p)
+        }
+
+        // 16-bit arithmetic
+        // ADD SP e
+        else if opcode == 0xE8 {
+            AddSpE
+        }
+        // ADD HL rr
+        else if op_x == 0b00 && op_q == 0b1 && op_z == 0b001 {
+            ADDHLrr(op_p)
+        }
+        // INC / DEC
+        else if op_x == 0b00 && op_q == 0b0 && op_z == 0b011 {
+            INCrr(op_p)
+        }
+        else if op_x == 0b00 && op_q == 0b1 && op_z == 0b011 {
+            DECrr(op_p)
+        }
+        else if opcode == 0x27 {
+            DAA
+        }
+        else if opcode == 0x37 {
+            SCF
+        }
+        else if opcode == 0x2F {
+            CPL
+        }
+        else if opcode == 0x3F {
+            CCF
+        }       
+
+        // ROTATES AND SHIFTS & Bit Ops
+        // RLCA
+        else if opcode == 0x07 {
+            RLCA
+        }
+        // RLA
+        else if opcode == 0x17 {
+            RLA
+        }
+        // RRCA
+        else if opcode == 0x0F {
+            RRCA
+        }
+        // RRA
+        else if opcode == 0x1F {
+            RRA
+        }
+        // prefix CB
+        else if opcode == 0xCB {
+            CB
+        }
+
+        //--------CONTROL FLOW---------
+
+        //Jump nn
+        else if opcode == 0b1100_0011 {
+            JPnn
+        }
+        //jump HL
+        else if opcode == 0b1110_1001 {
+            JPHL
+        }
+        //jump cc, nn
+        else if op_x == 3 && op_y & 0b100 == 0b000 && op_z == 2 {
+            JPccnn(cc)
+        }
+        // JR e
+        else if opcode == 0x18 {
+            JRe
+        }
+
+        //JR cc, e
+        else if op_x == 0b00 && op_y & 0b100 == 0b100 && op_z == 0b000 {
+            JRcce(cc)
+        }
         
-        return match opcode {
-            // 8-bit Load/Store
-            
+        // CALL nn
+        else if opcode == 0xCD {
+            CALLnn
+        }
 
-            // CPU Control
-            0x00 => NOP,
-            0x10 => STOP,
-            0x76 => HALT,
-            0xF3 => DI,
-            0xE1 => EI,
-            0x3F => CCF,
-            0x37 => SCF,
+        //CALL cc, nn
+        else if op_x == 0b11 && op_y & 0b100 == 0b000 && op_z == 0b100 {
+            CALLccnn(cc)
+        }
 
+        //RET
+        else if opcode == 0xC9 {
+            RET
+        }
 
-            
-            
-            _ => HALT
+        //RET cc
+        else if op_x == 0b11 && op_y & 0b100 == 0b000 && op_z == 0b000 {
+            RETcc(cc)
+        }
+
+        //RETI
+        else if opcode == 0xD9 {
+            RETI
+        }
+
+        //RST n
+        else if op_x == 0b11 && op_z == 0b111 {
+            RSTn(op_y)
+        }
+        else {
+            ErrInstr{opcode}
         }
     }
 
-    pub fn run(&mut self, gamepack: &Memory) -> Result<(), FailedCPUInstruction> {
-        
-        let start = Instant::now();
-
-        let result = match self.decode(gamepack) {
-            Ok(()) => Ok(()),
-            Err(e) => {
-                println!("Error: {e}");
-                Err(FailedCPUInstruction{})
+    pub fn execute(&mut self, instr: Instruction) {
+        eprintln!("{:?}", instr);
+        match instr {
+            ErrInstr{opcode} => {
+                match opcode {
+                    0xD3 | 0xE3 | 0xE4 | 0xF4 | 0xDB | 0xEB | 0xEC | 0xFC | 0xDD | 0xED | 0xFD => eprintln!("Instruction Undefined"),
+                _ => panic!("Invalid Instruction {opcode}"),
+                }
+            },
+            NOP => (),
+            STOP => {
+                self.write(0xFFFF, 0xFF);
+            },
+            EI => {
+                self.set_reg(A, 10);
             }
-        };
+            _ => println!("Instruction not matched"),
+        }
 
-        let instr_time = start.elapsed();
-        println!("cpu_speed: {:.5} hz", 1.0/((instr_time.as_nanos() as f64)/ 1_000_000_000.0f64)); // doesnt
-                                                                                                   // seem
-                                                                                                   // right
-
-        self.print_info();
-
-        result
     }
-    
+
+
     pub fn quick_init(&mut self){
         self.a = 0;
         self.f = 0;
@@ -163,7 +360,7 @@ impl SharpSM83 {
             h: 0x00,
             l: 0x00,
             f: 0x00, // Z N H C 0 0 0 0
-            
+
             machine_cycles: 0,
 
             ime: 0b0,
@@ -176,31 +373,77 @@ impl SharpSM83 {
         }
     }
 
+    pub fn run(&mut self, gamepack: &Memory) -> Result<(), FailedCPUInstruction> {
+
+        let start = Instant::now();
+
+        if self.ime > 0 {
+            self.handle_interrupt(gamepack.read(IF), gamepack.read(IE));
+        }
+
+        /*let result = match self.decode(gamepack) {
+          Ok(()) => Ok(()),
+          Err(e) => {
+          eprintln!("Error: {e}");
+          Err(FailedCPUInstruction{})
+          }
+          };*/
+
+        let instruction = self.decode_instruction(gamepack);
+        self.execute(instruction);
+
+
+        let instr_time = start.elapsed();
+        eprintln!("cpu_speed: {:.5} hz", 1.0/((instr_time.as_nanos() as f64)/ 1_000_000_000.0f64));
+
+        self.print_info();
+
+        Ok(())
+    }
+
     fn fetch(&mut self, gamepack: &Memory) -> u8 {
         // ---- get instruction from memory  ----
         let opcode = gamepack.read(self.pc);
 
-        println!("fetched instruction: {0:#04X} at pc: {1:#04X}", opcode, self.pc);     
+        eprintln!("fetched instruction: {0:#04X} at pc: {1:#04X}", opcode, self.pc);     
 
         self.pc = u16_add(self.pc, 1).0;
 
         opcode
     }
 
+    fn handle_interrupt(&mut self, if_reg: u8, ie_reg: u8) {
+        if if_reg & 0b1 > 0 && ie_reg & 0b1 > 0 {
+            println!("VBlank interrupt");
+        }
+        if if_reg & 0b10 > 0 && ie_reg & 0b10 > 0 {
+            println!("LCD interrupt");
+        }
+        if if_reg & 0b100 > 0 && ie_reg & 0b100 > 0 {
+            println!("Timer interrupt");
+        }
+        if if_reg & 0b1000 > 0 && ie_reg & 0b1000 > 0 {
+            println!("Serial interrupt");
+        }
+        if if_reg & 0b10000 > 0 && ie_reg & 0b10000 > 0 {
+            println!("Joypad interrupt");
+        }
+
+    }
 
     fn decode(&mut self, gamepack: &Memory) -> Result<(), String> {
 
         let opcode = self.fetch(gamepack);
-        let _op_x = opcode >> 6;
-        let _op_y = (opcode & 0b00111000) >> 3;
-        let _op_z = opcode & 0b00000111;
-        let _op_p = _op_y >> 1;
-        let cc = _op_y & 0b011;
-        let _op_q = _op_y % 2;
+        let op_x = opcode >> 6;
+        let op_y = (opcode & 0b00111000) >> 3;
+        let op_z = opcode & 0b00000111;
+        let op_p = op_y >> 1;
+        let cc = op_y & 0b011;
+        let op_q = op_y % 2;
 
         let high = high_u8(opcode);
         let low = low_u8(opcode);
- 
+
         if opcode == 0x00 {
             println!("NOP");
         } else if opcode == 0x10 {
@@ -222,11 +465,11 @@ impl SharpSM83 {
         // 8-bit load / store instructions
 
         // load / store to view address
-        else if _op_x == 0b00 && _op_z == 0b010 {
-            let loc = self.get_rr_mem(_op_p);
+        else if op_x == 0b00 && op_z == 0b010 {
+            let loc = self.get_rr_mem(op_p);
             println!("load / store to view");
 
-            if _op_q != 0b0 {
+            if op_q != 0b0 {
                 let n = self.read(loc, gamepack);
                 println!("LD {}, {}", n, "A");
                 self.set_reg(A, n);
@@ -323,9 +566,9 @@ impl SharpSM83 {
             self.load_rr(SP, self.get_reg_view(H, L)); // needs add u16
         }
         //stack push and pop
-        else if _op_x == 0b11 && (low == 0b0101 || low == 0b0001) {
+        else if op_x == 0b11 && (low == 0b0101 || low == 0b0001) {
             println!("Push and pop");
-            let rr_key = _op_p;            
+            let rr_key = op_p;            
             //push to stack 0b11xx0101
             if low == 0b0101 {
                 let rr = self.get_rr(rr_key);
@@ -351,7 +594,7 @@ impl SharpSM83 {
         //-----------ARITHMETIC---------        
 
         //add, sub, adc, subc, and, or, xor, cp 
-        else if _op_x == 0b10 {
+        else if op_x == 0b10 {
             println!("arithmetic with register");
             let x = opcode & REGMASK;
             let operation = high & 0x3;
@@ -405,7 +648,7 @@ impl SharpSM83 {
 
         else if high < 0x4 && low == 0x9 {
             println!("Add HL, rr");
-            let rr = self.get_rr(_op_p);
+            let rr = self.get_rr(op_p);
             let hl = self.get_rr(HL);
             let result = u16_add(hl, rr);
             println!("{}",result.0);
@@ -424,11 +667,11 @@ impl SharpSM83 {
         }
 
         // increment / decrement registers
-        else if  _op_x == 0 && (_op_z == 3 || _op_z == 4 || _op_z == 5) {
+        else if  op_x == 0 && (op_z == 3 || op_z == 4 || op_z == 5) {
             println!("inc/dec");
-            let x = _op_y;
+            let x = op_y;
             let is_inc = low == 3 || low == 4 || low == 0xC; 
-            match _op_z == 3 {
+            match op_z == 3 {
                 false => {
                     let r = self.get_reg(x);
 
@@ -467,10 +710,10 @@ impl SharpSM83 {
         } 
 
         // ccf, scf
-        else if _op_x == 0 && _op_z == 7 && (_op_y == 6 || _op_y == 7){
+        else if op_x == 0 && op_z == 7 && (op_y == 6 || op_y == 7){
             println!("ccf, scf");
             self.f = self.f & 0b1001_1111;
-            let c_flag = if _op_q == 1 {self.f & 0b0001_0000}
+            let c_flag = if op_q == 1 {self.f & 0b0001_0000}
             else {0b0};
 
             self.f = match c_flag != 0 {
@@ -609,7 +852,7 @@ impl SharpSM83 {
             self.pc = self.get_rr(HL);
         }
         //jump cc, nn
-        else if _op_x == 3 && _op_z == 2 && _op_y < 4 {
+        else if op_x == 3 && op_z == 2 && op_y < 4 {
             println!("JP cc, nn");
             let lsb = self.fetch(gamepack);
             let msb = self.fetch(gamepack);
@@ -629,7 +872,7 @@ impl SharpSM83 {
         }
 
         //jump cc, e
-        else if _op_x == 0 && _op_z == 0 && _op_y >= 4 && _op_y <= 7 {
+        else if op_x == 0 && op_z == 0 && op_y >= 4 && op_y <= 7 {
             println!("JP cc, e");
             let e = self.fetch(gamepack);
 
@@ -656,7 +899,7 @@ impl SharpSM83 {
         }
 
         //CALL cc, nn
-        else if _op_x == 3 && _op_z == 4 && _op_y < 4  {
+        else if op_x == 3 && op_z == 4 && op_y < 4  {
             println!("CALL cc, nn");
             let lsb = self.fetch(gamepack);
             let msb = self.fetch(gamepack);
@@ -683,7 +926,7 @@ impl SharpSM83 {
         }
 
         //RET cc
-        else if _op_z == 0b000 && opcode & 0b1100_0000 != 0  {
+        else if op_z == 0b000 && opcode & 0b1100_0000 != 0  {
             println!("RET cc");
             if self.check_conditions(cc){
                 let msb = self.read(self.sp, gamepack);
@@ -706,9 +949,9 @@ impl SharpSM83 {
         }
 
         //RST
-        else if _op_x == 0b11 && _op_z == 0b111 {
+        else if op_x == 0b11 && op_z == 0b111 {
             println!("RST");
-            let n = RST[_op_y as usize];
+            let n = RST[op_y as usize];
             self.sp = u16_sub(self.sp, 1).0;
             self.write(self.sp, low_u16(self.pc));
             self.sp = u16_sub(self.sp, 1).0;
@@ -781,19 +1024,19 @@ impl SharpSM83 {
 
         Ok(())
     }
-    
+
     fn decompile(gamepack: &Memory) {
         let start = 0;
         let end = 100;
         let data = gamepack.get_data();
 
         for instruction in data {
-        
+
         }
     }
 
     fn decompile_instr(instruction: u8) {
-    
+
     }
 
     pub fn check_conditions(&self, cc: u8) -> bool {
@@ -945,7 +1188,6 @@ impl SharpSM83 {
             Mode::CPU => println!("{:#?}", self),
             Mode::EMU => (),
         }
-
     }
 }
 

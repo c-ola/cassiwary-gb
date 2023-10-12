@@ -1,10 +1,14 @@
 pub mod cpu;
 pub mod memory;
 pub mod ppu;
+pub mod timer;
+pub mod regids;
 
 use crate::ppu::*;
 use crate::cpu::*;
 use crate::memory::*;
+use crate::timer::*;
+use crate::regids::*;
 
 use std::thread;
 use std::sync::mpsc;
@@ -14,28 +18,13 @@ use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::PixelFormatEnum;
 use sdl2::render::CanvasBuilder;
-use std::time::Duration;
+use std::time::{Instant, Duration};
 use sdl2::render::{Canvas, Texture, TextureCreator};
 use sdl2::video::{Window, WindowContext};
 use sdl2::rect::{Rect, Point};
 use std::collections::HashSet;
 
 use std::fs::read;
-
-use std::time::{Instant};
-
-pub const B: u8 = 0x0;
-pub const C: u8 = 0x1;
-pub const D: u8 = 0x2;
-pub const E: u8 = 0x3;
-pub const H: u8 = 0x4;
-pub const L: u8 = 0x5;
-pub const A: u8 = 0x7;
-pub const READ_HL: u8 = 0x6;
-pub const BC: u8 = 0x0;
-pub const DE: u8 = 0x1;
-pub const HL: u8 = 0x2;
-pub const SP: u8 = 0x3;
 
 const SCREEN_WIDTH: u32 = 960;
 const SCREEN_HEIGHT: u32 = 960;
@@ -49,6 +38,7 @@ pub struct GameBoy {
     rom_path: String,
     verbose: bool,
     has_cartridge: bool,
+    timer: HTimer,
 }
 
 impl GameBoy {
@@ -63,6 +53,7 @@ impl GameBoy {
             rom_path: String::new(),
             verbose: false,
             has_cartridge: false,
+            timer: HTimer::new(),
         }
     }
 
@@ -180,15 +171,14 @@ impl GameBoy {
                 println!("new_keys: {:?}\told_keys:{:?}", new_keys, old_keys);
             }
             
-            //if cpu_clock.elapsed() > Duration::new(0, 1_000_000_000u32/100000) {          
-            
-            //}
-            
+            self.update(start);
+
 
             if self.peek_cpu().pc != 0x0100 {
-                self.tick_cpu()
+            //    self.tick_cpu()
             }
-
+            //self.tick_cpu();
+            
             if new_keys.contains(&Keycode::D) {
                 // self.tick_cpu();  
             }
@@ -231,7 +221,8 @@ impl GameBoy {
                         }
                     }
                 },
-                Err(error) => println!("{error}"),
+                //Err(error) => println!("{error}"),
+                _ => (), 
             }
 
             self.accumulator += 1;
@@ -256,14 +247,61 @@ impl GameBoy {
         }
 
     }
+    
+    fn update(&mut self, start: Instant){
+        //increment div register
+        //self.timer.update_div(start);
+        let mut div = self.gamepack.read(DIV);
+        if start.elapsed() > DIV_DUR {
+            match div.overflowing_add(1) {
+                (value, false) => div = value,
+                (_, true) => div = 0
+            }
+            self.gamepack.write(DIV, div);
+        }
+
+        let mut tima = self.gamepack.read(TIMA);
+        let mut tac = self.gamepack.read(TAC);
+        let mut tma = self.gamepack.read(TMA);
+        let tima_en = (tac & 0b100) != 0;
+        let clk_s = tac & 0b11;
+        
+        if start.elapsed() > TIMA_DUR[clk_s as usize] && tima_en {
+            match tima.overflowing_add(1) {
+                (value, false) => tima = value,
+                (_, true) => {
+                    tima = tma;
+                    self.request_interrupt(2);
+                }
+            }
+            self.gamepack.write(TIMA, tima);
+            self.gamepack.print(0xFF00, 10);
+        }
+
+    }
+    
+    fn request_interrupt(&mut self, bit: u8) {
+        let if_old = self.gamepack.read(IF);
+        let if_new = if_old | (0b1 << bit);
+        self.gamepack.write(IF, if_new);
+    }
+    
+    pub fn load_memory(&mut self, data: &[u8]) {
+        for i in 0..data.len() {
+            let byte = data[i];
+            self.gamepack.write(i as u16, byte);
+        }
+    }
 
     pub fn write(&mut self, data: u8) {
         self.gamepack.write(self.write_idx, data);
         self.write_idx += 1;
     }
-
-    pub fn inc_instr_count(&mut self){
-        self.instruction_count += 1;
+    
+    pub fn run_n(&mut self, n: u16) {
+        self.instruction_count = n;
+        self.accumulator = 0;
+        self.start();
     }
 
     pub fn log_memory(&self) {

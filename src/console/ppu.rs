@@ -3,7 +3,7 @@ use crate::bytes::*;
 
 use sdl2::pixels::Color;
 use sdl2::render::{Texture, Canvas};
-use sdl2::video::{Window};
+use sdl2::video::Window;
 use sdl2::rect::Point;
 
 const PALLETTE: [[u8; 4]; 4] = [    
@@ -23,7 +23,7 @@ const TMA_0: u16 = 0x9800;
 const TMA_1: u16 = 0x9C00;
 
 //registsers 
-const LCDC: u16 = 0xFF40; //
+const LCDC: u16 = 0xFF40;
 
 fn decode_lcdc(memory: &Memory){
     let lcdc = memory.read(LCDC);

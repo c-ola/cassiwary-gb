@@ -1,31 +1,62 @@
+//for explicitness
+#[derive(Debug)]
 pub enum Instruction {  
     /*
      * 8-bit Load
      */
-    LDrWithrn(u8, u8),
-    LDAddrHLWithrn(u8, u8),
-    LDABC,
-
-
+    LDRwN(u8), // indirect HL included here
+    LDRwR(u8, u8),
+    LDH(bool, bool), //Load from if true, use n if true,  
+    LDAwNNa(bool), // load from if true
+    
+    LDRRawA(u8),
+    LDAwRRa(u8),
 
     /*
      * 16-bit Load
      */
-    LDrrnn(u8, u16),
-    LDAddrnnSP(u16),
-    LDSPHL,
+    LDrrnn(u8),
+    LDNNawSP,
     PUSHrr(u8),
     POPrr(u8),
+    LDHLwSP,
+    LDSPwHL,
 
     /*
      * 8-bit Arithmetic/Logic
      */
+    Add(u8),
+    Adc(u8),
+    Sub(u8),
+    Sbc(u8),
+    And(u8),
+    Or(u8),
+    Xor(u8),
+    Cmp(u8),
+    IncR(u8),
+    DecR(u8),
+    Addn,
+    Subn,
+    Andn,
+    Orn,
+    Adcn,
+    Sbcn,
+    Xorn,
+    Cmpn,
 
+    /*
+     * Arithmetic Miscellaneous
+     */
+    DAA,
+    SCF,
+    CPL,
+    CCF,
 
     /*
      * 16-bit Arithmetic/Logic
      */
     ADDHLrr(u8),
+    AddSpE,
     INCrr(u8),
     DECrr(u8),
     ADDSPdd(i8),
@@ -38,6 +69,7 @@ pub enum Instruction {
     RLA,
     RRCA,
     RRA,
+    CB,
     RLCr(u8), //same with HL
     RLr(u8),
     RRCr(u8),
@@ -55,11 +87,9 @@ pub enum Instruction {
     RESnr(u8), //same as RESET n, (HL)
 
     /*
-     * CPU Control
+     * CPU Misc
      */
 
-    CCF,
-    SCF,
     NOP,
     HALT,
     STOP,
@@ -69,19 +99,17 @@ pub enum Instruction {
     /*
      * Jumps
      */
-    JPnn(u16), // same as JP HL, just pass in HL
-    JPfnn(u8, u16),
-    JRPCdd(i8),
-    JRfPCdd(i8),
-    CALLnn(u16),
-    CALLfnn(u8, u16),
+    JPnn,
+    JPHL,
+    JPccnn(u8),
+    JRe,
+    JRcce(u8),
+    CALLnn,
+    CALLccnn(u8),
     RET,
-    RETf(u8),
+    RETcc(u8),
     RETI,
     RSTn(u8),
+
+    ErrInstr{opcode: u8}
 }
-
-impl Instruction {
-
-}
-
