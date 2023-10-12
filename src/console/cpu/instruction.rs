@@ -1,5 +1,5 @@
 //for explicitness
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum Instruction {  
     /*
      * 8-bit Load
@@ -59,8 +59,6 @@ pub enum Instruction {
     AddSpE,
     INCrr(u8),
     DECrr(u8),
-    ADDSPdd(i8),
-    LDHLSPdd(i8), // this one is a load but it uses the ALU
 
     /*
      * Rotates and Shifts
