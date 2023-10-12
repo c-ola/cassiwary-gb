@@ -118,7 +118,8 @@ impl PPU {
         for i in 0..TILEMAP_SIZE {
             let index = memory.read(bg_tma + i as u16) as u16;
             //self.bg_map[i].update(index + vram_bank, memory);
-            self.bg_map[i].update(index + vram_bank, memory);
+            self.bg_map[i].update(i as u16 * 16 + 0, memory);
+            //self.w_map[i].update(index + vram_bank, memory);
             //self.w_map[i].update(index + vram_bank, memory);
         }
     }

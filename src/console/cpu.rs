@@ -206,12 +206,12 @@ impl SharpSM83 {
         } else if opcode == 0x10 {
             self.stop = true;
             println!("Stop");
-            panic!("stop");
+            //panic!("stop");
         } else if opcode == 0x76 {
             // 0b0111_0110 -> x = 110, y = 110
             self.stop = true;
             println!("halt");
-            panic!("halt");
+            //panic!("halt");
         } else if opcode == 0xF3 {
             self.ime = 0;
             println!("DI");

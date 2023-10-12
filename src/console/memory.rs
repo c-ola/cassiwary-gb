@@ -95,7 +95,7 @@ impl Memory {
 
     pub fn log(&self) -> Result<()> {
         let mut f = File::create("memory.hex")?;
-
+        println!("Creating hex dump");
         for i in (0..self.data.len()).step_by(16){
             write!(f, "{:04X}:", i)?;
             for j in 0..16 {
