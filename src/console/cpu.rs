@@ -390,6 +390,7 @@ impl SharpSM83 {
     }
 
     pub fn execute(&mut self, instr: Instruction, memory: &Memory) {
+
         match instr {
             ErrInstr{opcode} => {
                 match opcode {
@@ -566,13 +567,36 @@ impl SharpSM83 {
                 self.f |= 0b0110_0000;
             },
             RLCA | RLA => {
+                let b = (self.a & 0x80) >> 7;
+                let c = (self.f & 0x10) >> 4;
 
+                self.a = self.a << 1;
+                println!("{:#b}", self.a);
+                self.f = 0;
+                self.set_flag(FLAG_C, b == 1);
+
+                match instr {
+                    RLA => self.a |= c,
+                    RLCA => self.a |= b,
+                    _ => ()
+                }
             },
             RRCA | RRA => {
+                let b = self.a & 0x01;
+                let c = (self.f & 0x10) >> 4;
 
+                self.a = self.a >> 1;
+                self.f = 0;
+                self.set_flag(FLAG_C, b == 1);
+
+                match instr {
+                    RRA => self.a |= c << 7,
+                    RRCA => self.a |= b << 7,
+                    _ => ()
+                }
             },
             CB => {
-                self.cb_prefix(memory);
+                self.cb_prefix(memory).unwrap_or_default();
             },
 
             // Control flow
@@ -650,7 +674,6 @@ impl SharpSM83 {
 
             _ => println!("Instruction not matched"),
         }
-
     }
 
     fn set_carry_flags(&mut self, a: bool, b: bool) {

@@ -23,8 +23,6 @@ fn misc() {
     assert_eq!(cpu.get_flag(), 0b0000_0000);
     cpu.execute(SCF, &memory);
     assert_eq!(cpu.get_flag(), 0b0001_0000);
-    
-
 }
 
 #[test]
@@ -108,7 +106,55 @@ fn load_16bit() {
 }
 
 #[test]
-fn arithmetic_8bit(){
+fn rotates_and_shifts() {
+    let mut cpu = SharpSM83::new();
+    let mut memory = Memory::new(8*KBYTE);
+
+    let instructions = vec![
+        vec![0x21, 0x00, 0xFF], // ld HL nn
+        vec![0x3E, 0b1001_1100], // ld A, n
+        vec![0x77], // ld (HL), A
+        vec![0x07], // RLCA
+        vec![0x17], // RLA
+        vec![0x0F], // RRCA
+        vec![0x1F], // RRA
+        vec![0xCB],
+        vec![0xCB],
+        vec![0xCB],
+        vec![0xCB],
+        vec![0x00],
+    ];
+
+    let data: Vec<u8> = instructions.clone().into_iter().flatten().collect();
+
+    for i in 0..data.len() {
+        let byte = data[i];
+        memory.write(i as u16, byte);
+    }
+
+    cpu.raw_run(&mut memory);
+    cpu.raw_run(&mut memory);
+    cpu.raw_run(&mut memory);
+
+    cpu.raw_run(&mut memory);
+    assert_eq!(cpu.get_reg(A), 0b0011_1001);
+    assert_eq!(cpu.get_flag(), 0b0001_0000);
+    
+    cpu.raw_run(&mut memory);
+    assert_eq!(cpu.get_reg(A), 0b0111_0011);
+    assert_eq!(cpu.get_flag(), 0b0000_0000);
+ 
+    cpu.raw_run(&mut memory);
+    assert_eq!(cpu.get_reg(A), 0b1011_1001);
+    assert_eq!(cpu.get_flag(), 0b0001_0000);
+    
+    cpu.raw_run(&mut memory);
+    assert_eq!(cpu.get_reg(A), 0b1101_1100);
+    assert_eq!(cpu.get_flag(), 0b0001_0000);
+}
+
+#[test]
+fn arithmetic_8bit() {
     let mut cpu = SharpSM83::new();
     let mut memory = Memory::new(8*KBYTE);
     let instructions = vec![
