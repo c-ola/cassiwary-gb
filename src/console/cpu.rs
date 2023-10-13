@@ -465,18 +465,9 @@ impl SharpSM83 {
             },
             LDHLwSP => {
                 let e = self.fetch(memory);
-                let result = i16_add(self.get_rr(HL) as i16, e as i16);
+                let result = i16_add(self.get_rr(SP) as i16 , e as i8 as i16);
                 self.load_rr(HL, result.0);
-                if result.1 {
-                    self.f |= 0b1000_0000;
-                }else{
-                    self.f &= 0b0111_1111;
-                }
-                if result.2 {
-                    self.f |= 0b0000_1000;
-                }else{
-                    self.f &= 0b1111_0111;
-                }
+                self.set_carry_flags(result.1, result.2);
             }
             LDSPwHL => {
                 self.load_rr(SP, self.get_reg_view(H, L));
@@ -504,7 +495,7 @@ impl SharpSM83 {
             },
             AddSpE => {
                 let e = self.fetch(memory);
-                let result = i16_add(self.sp as i16, e as i16);
+                let result = i16_add(self.sp as i16, e as i8 as i16);
                 self.sp = result.0;
                 self.set_carry_flags(result.1, result.2);
             },
@@ -663,15 +654,16 @@ impl SharpSM83 {
     }
 
     fn set_carry_flags(&mut self, a: bool, b: bool) {
+        self.f = 0;
         if a {
-            self.f |= 0b1000_0000;
+            self.f |= 0b0001_0000;
         }else{
-            self.f &= 0b0111_1111;
+            self.f &= 0b1110_1111;
         }
         if b {
-            self.f |= 0b0000_1000;
+            self.f |= 0b0010_0000;
         }else{
-            self.f &= 0b1111_0111;
+            self.f &= 0b1101_1111;
         }
     }
 
