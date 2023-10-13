@@ -1,13 +1,23 @@
+use cassowary_gb::bytes::u8_to_u16;
 use cassowary_gb::console::*;
+use cassowary_gb::console::cpu::*;
+use cassowary_gb::console::cpu::instruction::Instruction::*;
+use cassowary_gb::console::memory::*;
 use cassowary_gb::console::regids::*;
 
 #[test]
-fn launch() {
-    let mut gb = GameBoy::new();
-    //gb.init();
-    //gb.set_run_count(0);
-    //assert_eq!(gb.peek_cpu().get_reg(B), 0x00);
-    //assert_eq!(gb.peek_memory().read(0x0000), 0x00);   
+fn misc() {
+    let mut cpu = SharpSM83::new();
+    let memory = Memory::new(KBYTE);
+    cpu.execute(EI, &memory);
+    assert!(cpu.is_interruptible());
+    cpu.execute(DI, &memory);
+    assert!(!cpu.is_interruptible());
+    cpu.execute(NOP, &memory);
+    cpu.execute(STOP, &memory);
+    cpu.execute(HALT, &memory);
+    assert!(cpu.stop && cpu.halt);
+
 }
 
 #[test]
@@ -66,6 +76,81 @@ fn control(){
 }
 
 #[test]
+fn load_8bit() {
+    let mut cpu = SharpSM83::new();
+    let mut memory = Memory::new(8*KBYTE);
+    let instructions = vec![
+        vec![0x0E, 0x07], // ld c, n
+        vec![0x3E, 0x01], // ld a, n
+        vec![0x51], // ld d, c
+        vec![0xE0, 0x04], // ldh $FF00 + (n), a
+        vec![0xF2], // ldh a, $FF00 + (c)
+        vec![0xFA, 0x04, 0xFF], // LD A (nn)
+        vec![0x12], // LD (DE) A
+        vec![0x00], //
+        vec![0x00],
+        vec![0x00],
+        vec![0x00],
+        vec![0x00],
+    ];
+    
+    let data: Vec<u8> = instructions.clone().into_iter().flatten().collect();
+    
+    for i in 0..data.len() {
+        let byte = data[i];
+        memory.write(i as u16, byte);
+    }
+    
+    cpu.raw_run(&mut memory);
+    assert_eq!(cpu.get_reg(C), 0x07);
+    cpu.raw_run(&mut memory);
+    assert_eq!(cpu.get_reg(A), 0x01);
+    cpu.raw_run(&mut memory);
+    assert_eq!(cpu.get_reg(D), 0x07);
+    cpu.raw_run(&mut memory);
+    assert_eq!(memory.read(0xFF04), 0x01);
+    cpu.raw_run(&mut memory);
+    assert_eq!(cpu.get_reg(A), 0x00);
+    cpu.raw_run(&mut memory);
+    assert_eq!(cpu.get_reg(A), 0x01);
+    cpu.raw_run(&mut memory);
+    assert_eq!(memory.read(cpu.get_rr(DE)), 0x01);
+}
+
+#[test]
+fn load_16bit() {
+    let mut cpu = SharpSM83::new();
+    let mut memory = Memory::new(8*KBYTE);
+    let instructions = vec![
+        vec![0x01, 0x07, 0xFF], // ld HL nn
+        vec![0x00],
+        vec![0x00],
+        vec![0x00],
+        vec![0x00],
+        vec![0x00],
+    ];
+    
+    let data: Vec<u8> = instructions.clone().into_iter().flatten().collect();
+    
+    for i in 0..data.len() {
+        let byte = data[i];
+        memory.write(i as u16, byte);
+    }
+    
+    cpu.raw_run(&mut memory);
+    assert_eq!(cpu.get_rr(BC), 0xFF07);
+    cpu.raw_run(&mut memory);
+    cpu.raw_run(&mut memory);
+    cpu.raw_run(&mut memory);
+    cpu.raw_run(&mut memory);
+    cpu.raw_run(&mut memory);
+    cpu.raw_run(&mut memory);
+    cpu.raw_run(&mut memory);
+    cpu.raw_run(&mut memory);
+    cpu.raw_run(&mut memory);
+
+}
+
 fn loads() {
     let mut gb = GameBoy::new();
     gb.init();

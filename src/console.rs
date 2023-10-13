@@ -39,6 +39,7 @@ pub struct GameBoy {
     verbose: bool,
     has_cartridge: bool,
     timer: HTimer,
+    ppu_timer: Instant,
 }
 
 impl GameBoy {
@@ -54,6 +55,8 @@ impl GameBoy {
             verbose: false,
             has_cartridge: false,
             timer: HTimer::new(),
+            ppu_timer: Instant::now(),
+
         }
     }
 
@@ -141,11 +144,13 @@ impl GameBoy {
 
         let mut prev_keys = HashSet::new();
         let mut start = Instant::now();
+        let mut ppu_timer = Instant::now();
+        let mut render_timer = Instant::now();
         let mut cpu_clock = Instant::now();
 
         'running: loop {
+            start = Instant::now();
 
-            //self.gamepack.write(0xFF00, 0x00);
             for event in event_pump.poll_iter() {
                 match event {
                     Event::Quit {..} |
@@ -172,24 +177,22 @@ impl GameBoy {
             }
             
             self.update(start);
-
-
-            if self.peek_cpu().pc != 0x0100 {
-                self.tick_cpu()
-            }
-
-            if new_keys.contains(&Keycode::D) {
-                // self.tick_cpu();  
-            }
-
-            // only updates the screen 60 times per second
-            if start.elapsed() > Duration::new(0, 1_000_000_000u32 / 60){
+            
+            if ppu_timer.elapsed() > Duration::new(0, (1000000000./59.7) as u32) {
+                ppu.request_interrupt(&mut self.gamepack);
                 ppu.update(&self.gamepack);
+                ppu_timer = Instant::now();
+            }
+            
+            self.tick_cpu();
+            
+            // only updates the screen 60 times per second
+            if render_timer.elapsed() > Duration::new(0, 1_000_000_000u32 / 60u32){
                 ppu.render(&mut canvas, &mut texture)?;
 
                 canvas.copy(&texture, None, Some(Rect::new(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT)))?;
                 canvas.present();
-                start = Instant::now();
+                render_timer = Instant::now();
             }            
             // ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
             prev_keys = keys;
@@ -278,7 +281,7 @@ impl GameBoy {
         }
 
     }
-    
+        
     fn request_interrupt(&mut self, bit: u8) {
         let if_old = self.gamepack.read(IF);
         let if_new = if_old | (0b1 << bit);

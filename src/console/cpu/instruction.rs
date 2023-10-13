@@ -6,7 +6,7 @@ pub enum Instruction {
      */
     LDRwN(u8), // indirect HL included here
     LDRwR(u8, u8),
-    LDH(bool, bool), //Load from if true, use n if true,  
+    LDH(bool, bool), //Load from accumulator to memory if true, use n instead of c if true,  
     LDAwNNa(bool), // load from if true
     
     LDRRawA(u8),

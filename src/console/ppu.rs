@@ -6,6 +6,8 @@ use sdl2::render::{Texture, Canvas};
 use sdl2::video::Window;
 use sdl2::rect::Point;
 
+use super::regids::IF;
+
 const PALLETTE: [[u8; 4]; 4] = [    
     [0xff, 0xff, 0xff, 0xFF],
     [0xaa, 0xaa, 0xaa, 0xFF],
@@ -81,7 +83,6 @@ pub struct PPU {
     w_map: [Tile; TILEMAP_SIZE],
     bg_px: [[u8; 4]; PIXELBUFFER_SIZE],
     w_px: [[u8; 4]; PIXELBUFFER_SIZE],
-
 }
 
 impl PPU {
@@ -93,16 +94,26 @@ impl PPU {
             w_px: [[0; 4]; PIXELBUFFER_SIZE],
         }
     }
- 
+    
+    pub fn request_interrupt(&mut self, memory: &mut Memory) {
+        let if_old = memory.read(IF);
+        let if_new = if_old | 0b1 ;
+        memory.write(IF, if_new);
+    }
+
     pub fn update(&mut self, memory: &Memory){
-        
         let lcdc = memory.read(LCDC);
         
         let enable = bit!(lcdc, 7) != 0;
 
-        let vram_bank = match bit!(lcdc, 4) {
+        let w_vram_bank = match bit!(lcdc, 4) {
             0u8 => VB_0,
             _ => VB_1
+        };
+
+        let bg_vram_bank = match bit!(lcdc, 4) {
+            0u8 => VB_1,
+            _ => VB_2
         };
 
         let w_tma = match bit!(lcdc, 6) {
@@ -117,10 +128,10 @@ impl PPU {
 
         for i in 0..TILEMAP_SIZE {
             let index = memory.read(bg_tma + i as u16) as u16;
-            //self.bg_map[i].update(index + vram_bank, memory);
-            self.bg_map[i].update(i as u16 * 16 + 0, memory);
-            //self.w_map[i].update(index + vram_bank, memory);
-            //self.w_map[i].update(index + vram_bank, memory);
+            self.bg_map[i].update(index + bg_vram_bank, memory);
+            //self.bg_map[i].update(i as u16 * 16 + 0x8000, memory);
+           // self.w_map[i].update(index + vram_bank, memory);
+            //self.w_map[i].update(index + , memory);
         }
     }
 

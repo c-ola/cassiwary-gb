@@ -78,6 +78,7 @@ pub struct SharpSM83 {
     sp: u16,
 
     pub stop: bool,
+    pub halt: bool,
     pub mode: Mode,
 
     pub verbose: bool,
@@ -85,7 +86,9 @@ pub struct SharpSM83 {
 }
 
 impl SharpSM83 {
-    
+    pub fn is_interruptible(&self) -> bool {
+        self.ime == 1
+    }
     pub fn new() -> SharpSM83 {
         SharpSM83 {
             mem_write_stack: Vec::new(),
@@ -108,6 +111,7 @@ impl SharpSM83 {
             sp: 0x0000,
 
             stop: false,
+            halt: false,
             mode: Mode::CPU,
             verbose: true,
         }
@@ -136,6 +140,24 @@ impl SharpSM83 {
         self.print_info();
 
         Ok(())
+    }
+
+    pub fn raw_run(&mut self, memory: &mut Memory) {
+        let opcode = self.fetch(memory);
+        let instr = self.decode(opcode);
+        eprintln!("{:?}", instr);
+        self.execute(instr, memory);
+        self.print_info();
+
+        while self.mem_write_stack.len() > 0 {
+            self.mem_write -= 1;
+            let data = self.mem_write_stack.pop();
+
+            match data {
+                Some((x, y)) => memory.write(y, x),
+                _ => ()
+            }
+        }
     }
 
     fn fetch(&mut self, memory: &Memory) -> u8 {
@@ -180,9 +202,9 @@ impl SharpSM83 {
         }
         // LDH
         else if op_x == 0b11 && op_y & 0b001 == 0b000 && op_z & 0b101 == 0b000 {
-            LDH(op_p == 0b100, op_z == 0b000)
+            LDH(op_y == 0b100, op_z == 0b000)
         }
-        // LD r (nn)
+        // LD A (nn)
         else if op_x == 0b11 && op_y & 0b101 == 0b101 && op_z == 0b010 {
             LDAwNNa(op_y == 0b101)
         }
@@ -372,12 +394,12 @@ impl SharpSM83 {
             ErrInstr{opcode} => {
                 match opcode {
                     0xD3 | 0xE3 | 0xE4 | 0xF4 | 0xDB | 0xEB | 0xEC | 0xFC | 0xDD | 0xED | 0xFD => eprintln!("Instruction Undefined"),
-                _ => panic!("Invalid Instruction {opcode:#010b}"),
+                    _ => panic!("Invalid Instruction {opcode:#010b}"),
                 }
             },
             NOP => (),
-            STOP => println!("stop"),
-            HALT => println!("halt"),
+            STOP => self.stop = true,
+            HALT => self.halt = true,
             DI => self.ime = 0,
             EI => self.ime = 1,
             LDRwR(r1, r2) => self.set_reg(r1, self.get_reg(r2)),
@@ -391,8 +413,8 @@ impl SharpSM83 {
                     false => self.get_reg(C),
                 });
                 match from {
-                    false => {self.set_reg(A, self.read(loc, memory))}
                     true => {self.write(loc, self.get_reg(A))}
+                    false => {self.set_reg(A, self.read(loc, memory))}
                 } 
             }
             LDAwNNa(from) => {
@@ -735,7 +757,7 @@ impl SharpSM83 {
                 self.set_flag(FLAG_H, true);
             },
             2 => {
-                //reset
+                //ruset
                 self.set_reg(op_z, set_bit(r, n, false));
             },
             3 => {
