@@ -118,8 +118,8 @@ fn rotates_and_shifts() {
         vec![0x17], // RLA
         vec![0x0F], // RRCA
         vec![0x1F], // RRA
-        vec![0x06, 0b0110_1101], // ld b, n
-        vec![0xCB, 0x00], // rlc
+        vec![0x06, 0b01101101], // ld b, n
+        vec![0xCB, 0x00], // rlc r -> 0b1101101x, c=
         vec![0xCB, 0x10], // rl r
         vec![0xCB, 0x08], // rrc r
         vec![0xCB, 0x18], // rr r
@@ -159,17 +159,33 @@ fn rotates_and_shifts() {
 
     cpu.raw_run(&mut memory);
 
+    //rlc, rl, rrc, rr
     cpu.raw_run(&mut memory);
-    assert_eq!(cpu.get_reg(B), 0b1101_1011);
+    assert_eq!(cpu.get_reg(B), 0b11011010);
+    assert_eq!(cpu.get_flag(), 0b0000_0000);
+    cpu.raw_run(&mut memory); 
+    assert_eq!(cpu.get_reg(B), 0b10110100);
+    assert_eq!(cpu.get_flag(), 0b0001_0000);
+    cpu.raw_run(&mut memory);
+    assert_eq!(cpu.get_reg(B), 0b01011010);
     assert_eq!(cpu.get_flag(), 0b0000_0000);
     cpu.raw_run(&mut memory);
+    assert_eq!(cpu.get_reg(B), 0b00101101);
+    assert_eq!(cpu.get_flag(), 0b0000_0000);
+
+    //sla, swap, sra, srl
     cpu.raw_run(&mut memory);
+    assert_eq!(cpu.get_reg(B), 0b01011010);
+    assert_eq!(cpu.get_flag(), 0b0000_0000);
+    cpu.raw_run(&mut memory); 
+    assert_eq!(cpu.get_reg(B), 0b10100101);
+    assert_eq!(cpu.get_flag(), 0b0000_0000);
     cpu.raw_run(&mut memory);
+    assert_eq!(cpu.get_reg(B), 0b11010010);
+    assert_eq!(cpu.get_flag(), 0b0001_0000);
     cpu.raw_run(&mut memory);
-    cpu.raw_run(&mut memory);
-    cpu.raw_run(&mut memory);
-    cpu.raw_run(&mut memory);
-    cpu.raw_run(&mut memory);
+    assert_eq!(cpu.get_reg(B), 0b01101001);
+    assert_eq!(cpu.get_flag(), 0b0000_0000);
     cpu.raw_run(&mut memory);
 }
 

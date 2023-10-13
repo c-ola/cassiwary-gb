@@ -681,10 +681,10 @@ impl SharpSM83 {
         match instr {
             RLCr(r) | RRCr(r) | RLr(r) | RRr(r) | SLAr(r) | SRAr(r) | SRLr(r) => {
                 let mut rv = self.get_reg_or_mem(r, memory);
-                let b = match instr {
-                    RLCr(r) | RLr(r) | SLAr(r) => (rv & 0x80) >> 7,
-                    RRCr(r) | RRr(r) | SRAr(r) | SRLr(r) => rv & 0x01,
-                    _ => 0,
+                let (new_bit_loc, b) = match instr {
+                    RLCr(r) | RLr(r) | SLAr(r) => (0, (rv & 0x80) >> 7),
+                    RRCr(r) | RRr(r) | SRAr(r) | SRLr(r) => (7, rv & 0x01),
+                    _ => (0, 0),
                 };
 
                 match instr {
@@ -698,14 +698,13 @@ impl SharpSM83 {
                 let new_bit = match instr {
                     RLCr(_) | RRCr(_) => b == 1,
                     RLr(_) | RRr(_) => c == 1,
-                    SLAr(_) => (rv & 0x02) != 0,
                     SRAr(_) => (rv & 0x40) != 0,
-                    SRLr(_) => false,
+                    SRLr(_) | SLAr(_) => false,
                     _ => panic!("nooooooo"),
                 };
 
                 
-                rv = set_bit(rv, 7, new_bit);
+                rv = set_bit(rv, new_bit_loc, new_bit);
 
                 self.set_reg(r, rv);
                 self.set_flag(FLAG_C, b == 1);
