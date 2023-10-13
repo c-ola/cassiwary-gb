@@ -17,6 +17,13 @@ fn misc() {
     cpu.execute(STOP, &memory);
     cpu.execute(HALT, &memory);
     assert!(cpu.stop && cpu.halt);
+    cpu.execute(CCF, &memory);
+    assert_eq!(cpu.get_flag(), 0b0001_0000);
+    cpu.execute(CCF, &memory);
+    assert_eq!(cpu.get_flag(), 0b0000_0000);
+    cpu.execute(SCF, &memory);
+    assert_eq!(cpu.get_flag(), 0b0001_0000);
+    
 
 }
 
@@ -101,56 +108,6 @@ fn load_16bit() {
 }
 
 #[test]
-fn control_flow() {
-    let mut cpu = SharpSM83::new();
-    let mut memory = Memory::new(8*KBYTE);
-    let instructions = vec![
-        vec![0x31, 0xFF, 0x7F], // ld SP nn
-        vec![0x00],
-        vec![0x00],
-        vec![0x00],
-        vec![0x00],
-        vec![0x00],
-    ];
-
-    let data: Vec<u8> = instructions.clone().into_iter().flatten().collect();
-
-    for i in 0..data.len() {
-        let byte = data[i];
-        memory.write(i as u16, byte);
-    }
-
-    cpu.raw_run(&mut memory);
-    assert_eq!(cpu.get_rr(SP), 0x7FFF);
-}
-
-
-#[test]
-fn prefix() {
-    let mut cpu = SharpSM83::new();
-    let mut memory = Memory::new(8*KBYTE);
-    let instructions = vec![
-        vec![0x01, 0x13, 0x08], // ld BC nn
-        vec![0x00],
-        vec![0x00],
-        vec![0x00],
-        vec![0x00],
-        vec![0x00],
-    ];
-
-    let data: Vec<u8> = instructions.clone().into_iter().flatten().collect();
-
-    for i in 0..data.len() {
-        let byte = data[i];
-        memory.write(i as u16, byte);
-    }
-
-    cpu.raw_run(&mut memory);
-    assert_eq!(cpu.get_rr(BC), 0x0813);
-}
-
-
-#[test]
 fn arithmetic_8bit(){
     let mut cpu = SharpSM83::new();
     let mut memory = Memory::new(8*KBYTE);
@@ -218,3 +175,53 @@ fn arithmetic_16bit(){
     assert_eq!(cpu.get_flag() & 0xF0, 0b00010000); 
     cpu.raw_run(&mut memory);
 }
+
+#[test]
+fn control_flow() {
+    let mut cpu = SharpSM83::new();
+    let mut memory = Memory::new(8*KBYTE);
+    let instructions = vec![
+        vec![0x31, 0xFF, 0x7F], // ld SP nn
+        vec![0x00],
+        vec![0x00],
+        vec![0x00],
+        vec![0x00],
+        vec![0x00],
+    ];
+
+    let data: Vec<u8> = instructions.clone().into_iter().flatten().collect();
+
+    for i in 0..data.len() {
+        let byte = data[i];
+        memory.write(i as u16, byte);
+    }
+
+    cpu.raw_run(&mut memory);
+    assert_eq!(cpu.get_rr(SP), 0x7FFF);
+}
+
+#[test]
+fn prefix() {
+    let mut cpu = SharpSM83::new();
+    let mut memory = Memory::new(8*KBYTE);
+    let instructions = vec![
+        vec![0x01, 0x13, 0x08], // ld BC nn
+        vec![0x00],
+        vec![0x00],
+        vec![0x00],
+        vec![0x00],
+        vec![0x00],
+    ];
+
+    let data: Vec<u8> = instructions.clone().into_iter().flatten().collect();
+
+    for i in 0..data.len() {
+        let byte = data[i];
+        memory.write(i as u16, byte);
+    }
+
+    cpu.raw_run(&mut memory);
+    assert_eq!(cpu.get_rr(BC), 0x0813);
+}
+
+

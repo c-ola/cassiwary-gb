@@ -557,7 +557,7 @@ impl SharpSM83 {
                     _ => panic!("should not be here (scf/ccf error)")
                 };
                 self.f = match c_flag != 0 {
-                    true => self.f & 0b1110_1111,
+                    true => self.f ^ 0b0001_0000,
                     false => self.f | 0b0001_0000,
                 };
             },
