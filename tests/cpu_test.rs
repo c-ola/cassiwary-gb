@@ -122,11 +122,13 @@ fn load_16bit() {
     let mut cpu = SharpSM83::new();
     let mut memory = Memory::new(8*KBYTE);
     let instructions = vec![
-        vec![0x01, 0x07, 0xFF], // ld HL nn
-        vec![0x00],
-        vec![0x00],
-        vec![0x00],
-        vec![0x00],
+        vec![0x21, 0x07, 0xFF], // ld HL nn
+        vec![0x01, 0x10, 0xFA], // ld BC nn
+        vec![0xF9], // ld sp hl
+        vec![0xF8, 0x05], // ld hl, sp + e
+        vec![0xE5], // push hl
+        vec![0xC1], // pop hl
+        vec![0x08, 0x00, 0xFF], // ld (nn) sp
         vec![0x00],
     ];
     
@@ -138,17 +140,23 @@ fn load_16bit() {
     }
     
     cpu.raw_run(&mut memory);
-    assert_eq!(cpu.get_rr(BC), 0xFF07);
+    assert_eq!(cpu.get_rr(HL), 0xFF07);
     cpu.raw_run(&mut memory);
+    assert_eq!(cpu.get_rr(BC), 0xFA10);
     cpu.raw_run(&mut memory);
+    assert_eq!(cpu.get_rr(SP), 0xFF07);
     cpu.raw_run(&mut memory);
+    assert_eq!(cpu.get_rr(HL), 0xFF0C);
     cpu.raw_run(&mut memory);
+    assert_eq!(cpu.get_rr(SP), 0xFF05);
+    assert_eq!(memory.read(cpu.get_rr(SP)), 0x0C);
     cpu.raw_run(&mut memory);
+    assert_eq!(cpu.get_rr(SP), 0xFF07);
+    assert_eq!(memory.read(cpu.get_rr(SP)), 0x00);
     cpu.raw_run(&mut memory);
+    assert_eq!(memory.read(0xFF00), 0x07);
+    assert_eq!(memory.read(0xFF01), 0xFF);
     cpu.raw_run(&mut memory);
-    cpu.raw_run(&mut memory);
-    cpu.raw_run(&mut memory);
-
 }
 
 fn loads() {

@@ -465,7 +465,7 @@ impl SharpSM83 {
             },
             LDHLwSP => {
                 let e = self.fetch(memory);
-                let result = i16_add(self.f as i16, e as i16);
+                let result = i16_add(self.get_rr(HL) as i16, e as i16);
                 self.load_rr(HL, result.0);
                 if result.1 {
                     self.f |= 0b1000_0000;
