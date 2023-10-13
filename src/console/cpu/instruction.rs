@@ -80,9 +80,9 @@ pub enum Instruction {
     /*
      * Single bit Operations
      */
-    BITnr(u8), //same as BIT n, (HL)
-    SETnr(u8), //same as SET n, (HL)
-    RESnr(u8), //same as RESET n, (HL)
+    BITnr{n: u8, r: u8}, //same as BIT n, (HL)
+    SETnr{n: u8, r: u8}, //same as SET n, (HL)
+    RESnr{n: u8, r: u8}, //same as RESET n, (HL)
 
     /*
      * CPU Misc

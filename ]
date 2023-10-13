@@ -679,42 +679,21 @@ impl SharpSM83 {
     
     pub fn execute_prefix(&mut self, instr: Instruction, memory: &Memory) {
         match instr {
-            RLCr(r) | RRCr(r) | RLr(r) | RRr(r) | SLAr(r) | SRAr(r) | SRLr(r) => {
+            RLCr(r) | RRCr(r) | RLr(r) | RRr(r) | SLAr(r) | SRAr(r) | SWAPr(r) | SRLr(r) => {
                 let mut rv = self.get_reg_or_mem(r, memory);
                 let b = match instr {
-                    RLCr(r) | RLr(r) | SLAr(r) => (rv & 0x80) >> 7,
-                    RRCr(r) | RRr(r) | SRAr(r) | SRLr(r) => rv & 0x01,
+                    RLCr(r) | RLr(r) | SLAr(r) => (r & 0x80) >> 7,
+                    RRCr(r) | RRr(r) | SRAr(r) | SRLr(r) => r & 0x01,
                     _ => 0,
                 };
-
-                match instr {
-                    RLCr(r) | RLr(r) | SLAr(r) => rv = rv << 1,
-                    RRCr(r) | RRr(r) | SRAr(r) | SRLr(r) => rv = rv >> 1,
-                    _ => (),
-                }
-
-                let c = (self.f & 0x10) >> 4;
-
-                let new_bit = match instr {
-                    RLCr(_) | RRCr(_) => b == 1,
-                    RLr(_) | RRr(_) => c == 1,
-                    SLAr(_) => (rv & 0x02) != 0,
-                    SRAr(_) => (rv & 0x40) != 0,
-                    SRLr(_) => false,
-                    _ => panic!("nooooooo"),
-                };
-
                 
-                rv = set_bit(rv, 7, new_bit);
+                //RRC
+                rv = rv >> 1;
+                rv |= b << 7;
+                self.set_flag(FLAG_C, b == 1)
 
-                self.set_reg(r, rv);
-                self.set_flag(FLAG_C, b == 1);
-            },
-            SWAPr(r) => {
-                let rv = self.get_reg_or_mem(r, memory);
-                let n_msb = low_u8(rv) << 4;
-                let n_lsb = high_u8(rv);
-                self.set_reg(r, n_msb + n_lsb);
+
+
             },
             BITnr { n, r } =>  {
                 self.set_flag(FLAG_Z, bit!(r, n) != 0);
@@ -726,7 +705,6 @@ impl SharpSM83 {
             ErrInstr {opcode} => panic!("Should not be here lol {:#0X}", opcode),
             _ => panic!("also should not be here lmfao"),
         }
-        eprintln!("{:?}", instr);
     }
     
 

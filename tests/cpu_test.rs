@@ -118,10 +118,15 @@ fn rotates_and_shifts() {
         vec![0x17], // RLA
         vec![0x0F], // RRCA
         vec![0x1F], // RRA
-        vec![0xCB],
-        vec![0xCB],
-        vec![0xCB],
-        vec![0xCB],
+        vec![0x06, 0b0110_1101], // ld b, n
+        vec![0xCB, 0x00], // rlc
+        vec![0xCB, 0x10], // rl r
+        vec![0xCB, 0x08], // rrc r
+        vec![0xCB, 0x18], // rr r
+        vec![0xCB, 0x20], // sla r
+        vec![0xCB, 0x30], // swap r
+        vec![0xCB, 0x28], // sra r
+        vec![0xCB, 0x38], // srl r
         vec![0x00],
     ];
 
@@ -151,6 +156,21 @@ fn rotates_and_shifts() {
     cpu.raw_run(&mut memory);
     assert_eq!(cpu.get_reg(A), 0b1101_1100);
     assert_eq!(cpu.get_flag(), 0b0001_0000);
+
+    cpu.raw_run(&mut memory);
+
+    cpu.raw_run(&mut memory);
+    assert_eq!(cpu.get_reg(B), 0b1101_1011);
+    assert_eq!(cpu.get_flag(), 0b0000_0000);
+    cpu.raw_run(&mut memory);
+    cpu.raw_run(&mut memory);
+    cpu.raw_run(&mut memory);
+    cpu.raw_run(&mut memory);
+    cpu.raw_run(&mut memory);
+    cpu.raw_run(&mut memory);
+    cpu.raw_run(&mut memory);
+    cpu.raw_run(&mut memory);
+    cpu.raw_run(&mut memory);
 }
 
 #[test]
