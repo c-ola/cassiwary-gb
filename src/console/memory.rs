@@ -90,6 +90,9 @@ impl Memory {
     }
 
     pub fn write(&mut self, addr: u16, n: u8){
+        if addr >= 0xC000 && addr <= 0xDDFF {
+            self.data[(addr + 0x2000) as usize] = n;
+        }
         self.data[addr as usize] = n;
     }
 

@@ -19,6 +19,7 @@ use sdl2::keyboard::Keycode;
 use sdl2::pixels::PixelFormatEnum;
 use sdl2::render::CanvasBuilder;
 use std::time::{Instant, Duration};
+use std::cmp::min;
 use sdl2::render::{Canvas, Texture, TextureCreator};
 use sdl2::video::{Window, WindowContext};
 use sdl2::rect::{Rect, Point};
@@ -61,7 +62,7 @@ impl GameBoy {
     }
 
     pub fn init(&mut self, ) {
-        
+
     }
 
     pub fn set_verbose(&mut self, v: Option<String>) {
@@ -77,17 +78,26 @@ impl GameBoy {
 
     pub fn load_rom(&mut self, rom_path: Option<String>) {
 
-        for i in 0x104..0x14F {
-            self.gamepack.write(i as u16, 0xFF);
-        }
+        /*for i in 0x104..0x14F {
+          self.gamepack.write(i as u16, 0xFF);
+          }*/
 
         match rom_path {
             Some(game_rom) => {
                 match read(game_rom) {
                     Ok(buffer) => {
-                        for i in 0..buffer.len() {
+                        //rom banks
+                        for i in 0..0x8000 {
                             self.gamepack.write(i as u16, buffer[i]);
+                        } 
+
+                        // external ram
+                        if buffer.len() > 0xA000 {
+                            for i in 0xA000..0xBFFF {
+                                self.gamepack.write(i as u16, buffer[i]);
+                            }
                         }
+
                         self.has_cartridge = true;
                     }
                     Err(error) => panic!("{error} no game rom was specified or found"),
@@ -95,23 +105,16 @@ impl GameBoy {
 
             },
             None => match read(BOOT_ROM_PATH) {
-                Ok(result) => {
-                    for i in 0..0x0100 {
-                        self.gamepack.write(i, result[i as usize]);
+                Ok(buffer) => {
+                    for i in 0..min(0x8000, buffer.len()) {
+                        self.gamepack.write(i as u16, buffer[i]);
                     }
                 },
                 Err(error) => panic!("{error} boot rom error, file not found or incorrect file"),
-            }
+            },
         };
 
-        match read(BOOT_ROM_PATH) {
-            Ok(result) => {
-                for i in 0..0x0100 {
-                    //self.gamepack.write(i, result[i as usize]);
-                }
-            },
-            Err(error) => panic!("{error} boot rom error, file not found or incorrect file"),
-        }
+
     }
 
     pub fn run_emu(&mut self) -> Result<(), String>{
@@ -175,19 +178,22 @@ impl GameBoy {
             if !new_keys.is_empty() || !old_keys.is_empty() {
                 println!("new_keys: {:?}\told_keys:{:?}", new_keys, old_keys);
             }
-            
+
             self.update(start);
-            
+
             if ppu_timer.elapsed() > Duration::new(0, (1000000000./59.7) as u32) {
                 ppu.request_interrupt(&mut self.gamepack);
                 ppu.update(&self.gamepack);
                 ppu_timer = Instant::now();
             }
-            
-            self.tick_cpu();
-            
+
+            if self.cpu.pc == self.cpu.pc {
+                self.tick_cpu();
+                self.cpu.print_info();
+            }
+
             // only updates the screen 60 times per second
-            if render_timer.elapsed() > Duration::new(0, 1_000_000_000u32 / 60u32){
+            if render_timer.elapsed() > Duration::new(0, (1_000_000_000. / 59.73) as u32){
                 ppu.render(&mut canvas, &mut texture)?;
 
                 canvas.copy(&texture, None, Some(Rect::new(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT)))?;
@@ -199,6 +205,7 @@ impl GameBoy {
         }
 
         self.stop();
+        println!("instructions executede: {}", self.accumulator);
         Ok(())
     }
 
@@ -249,7 +256,7 @@ impl GameBoy {
         }
 
     }
-    
+
     fn update(&mut self, start: Instant){
         //increment div register
         //self.timer.update_div(start);
@@ -267,7 +274,7 @@ impl GameBoy {
         let mut tma = self.gamepack.read(TMA);
         let tima_en = (tac & 0b100) != 0;
         let clk_s = tac & 0b11;
-        
+
         if start.elapsed() > TIMA_DUR[clk_s as usize] && tima_en {
             match tima.overflowing_add(1) {
                 (value, false) => tima = value,
@@ -281,13 +288,13 @@ impl GameBoy {
         }
 
     }
-        
+
     fn request_interrupt(&mut self, bit: u8) {
         let if_old = self.gamepack.read(IF);
         let if_new = if_old | (0b1 << bit);
         self.gamepack.write(IF, if_new);
     }
-    
+
     pub fn load_memory(&mut self, data: &[u8]) {
         for i in 0..data.len() {
             let byte = data[i];
@@ -299,7 +306,7 @@ impl GameBoy {
         self.gamepack.write(self.write_idx, data);
         self.write_idx += 1;
     }
-    
+
     pub fn run_n(&mut self, n: u16) {
         self.instruction_count = n;
         self.accumulator = 0;

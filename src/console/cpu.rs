@@ -137,7 +137,7 @@ impl SharpSM83 {
 
         let instr_time = (start.elapsed().as_nanos() as f64) / (10u32.pow(9) as f64);
         //eprintln!("cpu_speed: {:.5} hz", 1./instr_time);
-        self.print_info();
+        //self.print_info();
 
         Ok(())
     }
@@ -280,10 +280,10 @@ impl SharpSM83 {
         } 
         // increment / decrement registers
         else if op_x == 0b00 && op_z == 0b100 {
-            IncR(op_p)
+            IncR(op_y)
         }
         else if op_x == 0b00 && op_z == 0b101 {
-            DecR(op_p)
+            DecR(op_y)
         }
 
         // 16-bit arithmetic
@@ -452,9 +452,9 @@ impl SharpSM83 {
                 let rr = self.get_rr(rr);
                 let lsb = low_u16(rr);
                 let msb = high_u16(rr);
-                self.sp -= 1;
+                self.sp = self.sp.overflowing_sub(1).0;
                 self.write(self.sp, msb);
-                self.sp -= 1;
+                self.sp = self.sp.overflowing_sub(1).0;
                 self.write(self.sp, lsb);
             },
             POPrr(rr) => {
@@ -472,6 +472,24 @@ impl SharpSM83 {
             }
             LDSPwHL => {
                 self.load_rr(SP, self.get_reg_view(H, L));
+            },
+            DecR(r) => {
+                let rv = self.get_reg_or_mem(r, memory);
+                let result = rv.overflowing_sub(1);
+                self.set_reg(r, result.0);
+
+                let half_c = (rv & 0xF).overflowing_sub(1).1;
+                let flag = make_flag(result.0, true, half_c, self.check_conditions(FLAG_C));
+                self.f = flag;
+            },
+            IncR(r) => {
+                let rv = self.get_reg_or_mem(r, memory);
+                let result = rv.overflowing_add(1);
+                self.set_reg(r, result.0);
+
+                let half_c = (rv & 0xF) + (0x1) > 0xF;
+                let flag = make_flag(result.0, false, half_c, self.check_conditions(FLAG_C));
+                self.f = flag;
             },
             Add(_) | Sub(_) | And(_) | Or(_) | Adc(_) | Sbc(_) | Xor(_) | Cmp(_) | Addn | Subn | Andn | Orn | Adcn | Sbcn | Xorn | Cmpn => {
                 let n = match instr {
@@ -673,7 +691,7 @@ impl SharpSM83 {
 
             },
 
-            _ => println!("Instruction not matched"),
+            _ => panic!("Instruction not matched {:?}", instr),
         }
     }
     
@@ -716,12 +734,12 @@ impl SharpSM83 {
                 self.set_reg(r, n_msb + n_lsb);
             },
             BITnr { n, r } =>  {
-                self.set_flag(FLAG_Z, bit!(r, n) != 0);
+                self.set_flag(FLAG_Z, bit!(self.get_reg_or_mem(r, memory), n) != 0);
                 self.set_flag(FLAG_N, false);
                 self.set_flag(FLAG_H, true);
             }
-            RESnr { n, r } => self.set_reg(r, set_bit(r, n, false)),
-            SETnr { n, r } => self.set_reg(r, set_bit(r, n, true)),
+            RESnr { n, r } => self.set_reg(r, set_bit(self.get_reg_or_mem(r, memory), n, false)),
+            SETnr { n, r } => self.set_reg(r, set_bit(self.get_reg_or_mem(r, memory), n, true)),
             ErrInstr {opcode} => panic!("Should not be here lol {:#0X}", opcode),
             _ => panic!("also should not be here lmfao"),
         }
