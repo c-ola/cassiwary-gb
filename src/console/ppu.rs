@@ -79,6 +79,7 @@ const PIXELBUFFER_SIZE: usize = PIXELBUFFER_WIDTH*PIXELBUFFER_HEIGHT;
 const TB_0: u16 = 0x8000;
 
 pub struct PPU {
+    ly: u8,
     bg_map: [Tile; TILEMAP_SIZE],
     w_map: [Tile; TILEMAP_SIZE],
     bg_px: [[u8; 4]; PIXELBUFFER_SIZE],
@@ -88,6 +89,7 @@ pub struct PPU {
 impl PPU {
     pub fn new() -> PPU {
         PPU {
+            ly: 0,
             bg_map:[Tile::new(); TILEMAP_SIZE],
             w_map:[Tile::new(); TILEMAP_SIZE],
             bg_px: [[0; 4]; PIXELBUFFER_SIZE],
@@ -102,6 +104,9 @@ impl PPU {
     }
 
     pub fn update(&mut self, memory: &Memory){
+
+        //memory.write(0xFF44, 0);
+
         let lcdc = memory.read(LCDC);
         
         let enable = bit!(lcdc, 7) != 0;

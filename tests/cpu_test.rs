@@ -264,12 +264,28 @@ fn control_flow() {
     let mut memory = Memory::new(8*KBYTE);
     let instructions = vec![
         vec![0x31, 0xFF, 0x7F], // ld SP nn
+        vec![0x21, 0x0B, 0x00], // ld hl nn
+        vec![0x37], // SCF
+        vec![0xC3, 0x00, 0x01], // jp nn
+        vec![0xE9], // jp hl
+        vec![0x18, 0x03], // jr PC + dd
         vec![0x00],
         vec![0x00],
         vec![0x00],
-        vec![0x00],
+        vec![0x30, 0x00], // jr cc, PC + dd
+        vec![0xCD, 0x04, 0x01], // call nn
+        vec![0xD4, 0x05, 0x01], // call cc, nn
+        vec![0x00], // rst n
         vec![0x00],
     ];
+    
+    memory.write(0x0100, 0x3F); // ccf flip carry
+    memory.write(0x0101, 0xD2); // jp nc nn
+    memory.write(0x0102, 0x0A);
+    memory.write(0x0103, 0x00);
+    memory.write(0x0104, 0xC9); // ret
+    memory.write(0x0105, 0x37); // scf
+    memory.write(0x0106, 0xD8); // ret c
 
     let data: Vec<u8> = instructions.clone().into_iter().flatten().collect();
 
@@ -280,6 +296,37 @@ fn control_flow() {
 
     cpu.raw_run(&mut memory);
     assert_eq!(cpu.get_rr(SP), 0x7FFF);
+    cpu.raw_run(&mut memory);
+    assert_eq!(cpu.get_rr(HL), 0x000B);
+    cpu.raw_run(&mut memory);
+    assert_eq!(cpu.get_flag() & 0x10, 0x10);
+    
+    let pc_ret = cpu.pc;
+    cpu.raw_run(&mut memory);
+    assert_eq!(cpu.pc, 0x0100);
+    cpu.raw_run(&mut memory);
+    assert_eq!(cpu.get_flag() & 0x10, 0x00);
+    cpu.raw_run(&mut memory);
+    assert_eq!(cpu.pc, 0x000A);
+    cpu.raw_run(&mut memory);
+    assert_eq!(cpu.pc, cpu.get_rr(HL));
+    let pc_before = cpu.pc + 2;
+    cpu.raw_run(&mut memory);
+    assert_eq!(cpu.pc, pc_before + 0x0003);
+    let pc_before = cpu.pc + 2;
+    cpu.raw_run(&mut memory);
+    assert_eq!(cpu.pc, pc_before + 0x0000);
+    cpu.raw_run(&mut memory);
+    assert_eq!(cpu.pc, 0x0104);
+    cpu.raw_run(&mut memory);
+    assert_eq!(cpu.pc, 21);
+    cpu.raw_run(&mut memory);
+    assert_eq!(cpu.pc, 0x0105);
+    cpu.raw_run(&mut memory);
+    assert_eq!(cpu.get_flag() & 0x10, 0x10);
+    cpu.raw_run(&mut memory);
+    assert_eq!(cpu.pc, 24);
+    cpu.raw_run(&mut memory);
 }
 
 #[test]

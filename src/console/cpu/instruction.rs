@@ -93,6 +93,9 @@ pub enum Instruction {
     STOP,
     DI,
     EI,
+    
+    // Interrupt
+    INTn(u16),
 
     /*
      * Jumps

@@ -105,7 +105,7 @@ impl SharpSM83 {
 
             machine_cycles: 0,
 
-            ime: 0b0,
+            ime: 0,
 
             pc: 0x0000,
             sp: 0x0000,
@@ -125,15 +125,18 @@ impl SharpSM83 {
     pub fn run(&mut self, memory: &Memory) -> Result<(), FailedCPUInstruction> {
 
         let start = Instant::now();
+        let handled_interrupt = if self.ime == 1 {
+            panic!("hello");
+            self.handle_interrupt(memory)
+        } else { false };
 
-        if self.ime > 0 {
-            self.handle_interrupt(memory.read(IF), memory.read(IE));
+        if handled_interrupt {
+        } else {
+            let opcode = self.fetch(memory);
+            let instr = self.decode(opcode);
+            eprintln!("{:?}", instr);
+            self.execute(instr, memory);
         }
-
-        let opcode = self.fetch(memory);
-        let instr = self.decode(opcode);
-        eprintln!("{:?}", instr);
-        self.execute(instr, memory);
 
         let instr_time = (start.elapsed().as_nanos() as f64) / (10u32.pow(9) as f64);
         //eprintln!("cpu_speed: {:.5} hz", 1./instr_time);
@@ -164,7 +167,7 @@ impl SharpSM83 {
         // ---- get instruction from memory  ----
         let opcode = memory.read(self.pc);
 
-        eprintln!("fetched instruction: {0:#04X} at pc: {1:#04X}", opcode, self.pc);     
+        eprintln!("fetched {0:#04X} at pc: {1:#04X}", opcode, self.pc);     
 
         self.pc = u16_add(self.pc, 1).0;
 
@@ -201,7 +204,12 @@ impl SharpSM83 {
             LDRwN(op_y)
         }
         // LDH
-        else if op_x == 0b11 && op_y & 0b001 == 0b000 && op_z & 0b101 == 0b000 {
+        // 0xE0, 0xE2, 0xF0, 0xF2
+        // 0b1110_0000
+        // 0b1110_0010
+        // 0b1111_0000
+        // 0b1111_0010
+        else if op_x == 0b11 && (op_y  == 0b110 || op_y == 0b100) && (op_z == 0b000 || op_z == 0b010) {
             LDH(op_y == 0b100, op_z == 0b000)
         }
         // LD A (nn)
@@ -348,7 +356,7 @@ impl SharpSM83 {
             JPHL
         }
         //jump cc, nn
-        else if op_x == 3 && op_y & 0b100 == 0b000 && op_z == 2 {
+        else if op_x == 0b11 && op_y & 0b100 == 0b000 && op_z == 0b010 {
             JPccnn(cc)
         }
         // JR e
@@ -637,8 +645,9 @@ impl SharpSM83 {
                 }
             },
             JRe => {
-                let e = self.fetch(memory) as i16;
-                self.pc = (self.pc as i16 + e as i8 as i16 ) as u16;
+                let e = self.fetch(memory) as i8;
+                println!("pc: {}, e: {}", self.pc, e);
+                self.pc = (self.pc as i16 + e as i16 ) as u16;
             },
             JRcce(cc) => {
                 let e = self.fetch(memory);
@@ -657,10 +666,10 @@ impl SharpSM83 {
                 };
                 if cc {
                     self.sp = u16_sub(self.sp, 1).0;
-                    self.write(self.sp, low_u16(self.pc));
+                    self.write(self.sp, high_u16(self.pc));
 
                     self.sp = u16_sub(self.sp, 1).0;
-                    self.write(self.sp, high_u16(self.pc));
+                    self.write(self.sp, low_u16(self.pc));
 
                     self.pc = nn;
                 }
@@ -672,11 +681,11 @@ impl SharpSM83 {
                     _ => true
                 };
                 if cc {
-                    let mut msb = self.read(self.sp, memory);
-                    self.sp = u16_add(self.sp, 1).0;
                     let mut lsb = self.read(self.sp, memory);
                     self.sp = u16_add(self.sp, 1).0;
-
+                    let mut msb = self.read(self.sp, memory);
+                    self.sp = u16_add(self.sp, 1).0;
+                    println!("msb: {msb:#0X}, lsb: {lsb:#0X}");
                     match instr {
                         RETI => self.ime = 1,
                         RSTn(n) => {
@@ -690,11 +699,21 @@ impl SharpSM83 {
                 }
 
             },
+            INTn(nn) => {
+                self.sp = u16_sub(self.sp, 1).0;
+                self.write(self.sp, low_u16(self.pc));
+
+                self.sp = u16_sub(self.sp, 1).0;
+                self.write(self.sp, high_u16(self.pc));
+
+                self.pc = nn;
+                self.ime = 0;
+            }
 
             _ => panic!("Instruction not matched {:?}", instr),
         }
     }
-    
+
     pub fn execute_prefix(&mut self, instr: Instruction, memory: &Memory) {
         match instr {
             RLCr(r) | RRCr(r) | RLr(r) | RRr(r) | SLAr(r) | SRAr(r) | SRLr(r) => {
@@ -721,7 +740,6 @@ impl SharpSM83 {
                     _ => panic!("nooooooo"),
                 };
 
-                
                 rv = set_bit(rv, new_bit_loc, new_bit);
 
                 self.set_reg(r, rv);
@@ -745,7 +763,7 @@ impl SharpSM83 {
         }
         eprintln!("{:?}", instr);
     }
-    
+
 
     fn set_carry_flags(&mut self, a: bool, b: bool) {
         self.f = 0;
@@ -778,33 +796,45 @@ impl SharpSM83 {
         self.mode = Mode::EMU;
     }
 
-    fn handle_interrupt(&mut self, if_reg: u8, ie_reg: u8) {
+    fn handle_interrupt(&mut self, memory: &Memory) -> bool {
+        let (if_reg, ie_reg) = (memory.read(IF), memory.read(IE));
+
         if if_reg & 0b1 > 0 && ie_reg & 0b1 > 0 {
             println!("VBlank interrupt");
+            self.execute(INTn(0x0040), memory);
+            return true
         }
         if if_reg & 0b10 > 0 && ie_reg & 0b10 > 0 {
-            println!("LCD interrupt");
+            println!("STAT interrupt");
+            self.execute(INTn(0x0048), memory);
+            return true
         }
         if if_reg & 0b100 > 0 && ie_reg & 0b100 > 0 {
             println!("Timer interrupt");
+            self.execute(INTn(0x0050), memory);
+            return true
         }
         if if_reg & 0b1000 > 0 && ie_reg & 0b1000 > 0 {
             println!("Serial interrupt");
+            self.execute(INTn(0x0058), memory);
+            return true
         }
         if if_reg & 0b10000 > 0 && ie_reg & 0b10000 > 0 {
             println!("Joypad interrupt");
-        }
+            self.execute(INTn(0x0060), memory);
+            return true
+        }       
+
+        false
 
     }
-    
 
-    /// note to self CHNAGE ALLL THIGNS TO DO WITH HL USIGNN WRONG GET_REG FUNCTION
     fn cb_prefix(&mut self, memory: &Memory) -> Instruction {
         let opcode = self.fetch(memory);
         let op_x = opcode >> 6;
         let op_y = (opcode & 0b00111000) >> 3;
         let op_z = opcode & 0b111;
-            
+
         return match op_x {
             //these are all the rotates
             0b00 => {
@@ -827,56 +857,6 @@ impl SharpSM83 {
             0b11 => SETnr{n: op_y, r: op_z},
             _ => ErrInstr{opcode},
         };
-    
-        
-
-        // WOW THIS IS TERRIBLE WHO WROTE THIS????!!?
-       /*
-
-        let n = op_y;
-        let r = self.get_reg_or_mem(READ_HL, memory);
-          match op_x {
-            0 => {
-                //rotate register or memory, this one is more complicated
-                // NOTE: for arithmetic shifts cast as i8
-                let shift = if op_q == 0 {
-                    Shift::LEFT
-                } else {
-                    Shift::RIGHT
-                };
-
-                match op_p {
-                    0 => {self.set_reg(op_z, shift.s_u8(r, n))},
-                    1 => {self.set_reg(op_z, shift.s_i8(r as i8, n) as u8)},
-                    2 => {self.set_reg(op_z, shift.s_u8(r, n))},
-                    3 => {
-                        if op_q == 0 {
-                            let hi = high_u8(r) >> 4;
-                            let lo = low_u8(r);
-                            self.set_reg(op_z, hi + lo << 4);
-                        }else{
-                            self.set_reg(op_z, shift.s_u8(r, n));
-                        }
-                    },
-                    _ => panic!("should not be here lol")
-                }
-            },
-            1 => {
-                //test bit
-                self.set_flag(FLAG_Z, bit!(r, n) != 0);
-                self.set_flag(FLAG_N, false);
-                self.set_flag(FLAG_H, true);
-            },
-            2 => {
-                //ruset
-                self.set_reg(op_z, set_bit(r, n, false));
-            },
-            3 => {
-                //set
-                self.set_reg(op_z, set_bit(r, n, true));
-            },
-            _ => panic!("how did i get here")
-        }*/
 
     }
 
@@ -895,12 +875,12 @@ impl SharpSM83 {
         let flag_z = self.f & 0b1000_0000 != 0;
         let flag_c = self.f & 0b0001_0000 != 0;
         //println!("{flag_z}, {cc}");
-
+        println!("{flag_c}, {cc}");
         match cc {
-            0 => flag_z,
-            1 => !flag_z,
-            2 => flag_c,
-            3 => !flag_c,
+            0b00 => !flag_z,
+            0b01 => flag_z,
+            0b10 => !flag_c,
+            0b11 => flag_c,
             _ => false
         }
 

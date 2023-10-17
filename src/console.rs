@@ -187,6 +187,7 @@ impl GameBoy {
                 ppu_timer = Instant::now();
             }
 
+            println!("{:#0b}", self.gamepack.read(IF));
             if self.cpu.pc == self.cpu.pc {
                 self.tick_cpu();
                 self.cpu.print_info();
