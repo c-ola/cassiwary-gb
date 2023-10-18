@@ -126,7 +126,6 @@ impl SharpSM83 {
 
         let start = Instant::now();
         let handled_interrupt = if self.ime == 1 {
-            panic!("hello");
             self.handle_interrupt(memory)
         } else { false };
 

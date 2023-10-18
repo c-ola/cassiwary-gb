@@ -183,7 +183,7 @@ impl GameBoy {
 
             if ppu_timer.elapsed() > Duration::new(0, (1000000000./59.7) as u32) {
                 ppu.request_interrupt(&mut self.gamepack);
-                ppu.update(&self.gamepack);
+                ppu.update(&mut self.gamepack);
                 ppu_timer = Instant::now();
             }
 

@@ -68,18 +68,31 @@ impl Tile {
 
 }
 
+//https://gbdev.io/pandocs/pixel_fifo.html
+
+struct Pixel {
+    color: u8,
+    palette: u8,
+    sprite_prio: u8,
+    bg_prio: u8,
+}
 
 const TM_DIM: (usize, usize) = (32, 32);
 const TILEMAP_SIZE: usize = TM_DIM.0 * TM_DIM.1;
 
 const PIXELBUFFER_WIDTH: usize = 240;
 const PIXELBUFFER_HEIGHT: usize = 240;
-const PIXELBUFFER_SIZE: usize = PIXELBUFFER_WIDTH*PIXELBUFFER_HEIGHT;
+const PIXELBUFFER_SIZE: usize = PIXELBUFFER_WIDTH * PIXELBUFFER_HEIGHT;
 
 const TB_0: u16 = 0x8000;
 
+use std::collections::VecDeque;
+
 pub struct PPU {
     ly: u8,
+    scx: u8,
+    bg_fifo: VecDeque<Pixel>,
+    lcdc: u8,
     bg_map: [Tile; TILEMAP_SIZE],
     w_map: [Tile; TILEMAP_SIZE],
     bg_px: [[u8; 4]; PIXELBUFFER_SIZE],
@@ -89,7 +102,10 @@ pub struct PPU {
 impl PPU {
     pub fn new() -> PPU {
         PPU {
-            ly: 0,
+            ly: 10,
+            scx: 0,
+            bg_fifo: VecDeque::new(),
+            lcdc: 0,
             bg_map:[Tile::new(); TILEMAP_SIZE],
             w_map:[Tile::new(); TILEMAP_SIZE],
             bg_px: [[0; 4]; PIXELBUFFER_SIZE],
@@ -102,13 +118,27 @@ impl PPU {
         let if_new = if_old | 0b1 ;
         memory.write(IF, if_new);
     }
+    
+    fn getTile(&mut self, memory: &mut Memory){
+        let mut tilemap = TMA_0;
+    }
 
-    pub fn update(&mut self, memory: &Memory){
+    fn getTileHigh(&mut self, memory: &mut Memory){
+    }
 
-        //memory.write(0xFF44, 0);
+    fn getTileLow(&mut self, memory: &mut Memory){
+    }
+
+    pub fn update(&mut self, memory: &mut Memory){
+        if self.ly < 153 {
+            self.ly += 1;
+        }else {
+            self.ly = 0;
+        }
+        memory.write(0xFF44, 0x10);
 
         let lcdc = memory.read(LCDC);
-        
+
         let enable = bit!(lcdc, 7) != 0;
 
         let w_vram_bank = match bit!(lcdc, 4) {
@@ -131,11 +161,11 @@ impl PPU {
             _ => TMA_1
         };
 
-        for i in 0..TILEMAP_SIZE {
-            let index = memory.read(bg_tma + i as u16) as u16;
-            self.bg_map[i].update(index + bg_vram_bank, memory);
+        for i in 0..TILEMAP_SIZE{
+            let index = memory.read(0x9800 + i as u16) as u16;
+            self.bg_map[i].update(index + VB_0, memory);
             //self.bg_map[i].update(i as u16 * 16 + 0x8000, memory);
-           // self.w_map[i].update(index + vram_bank, memory);
+            //self.w_map[i].update(index + vram_bank, memory);
             //self.w_map[i].update(index + , memory);
         }
     }
