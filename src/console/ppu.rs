@@ -26,12 +26,42 @@ const TMA_1: u16 = 0x9C00;
 
 //registsers 
 const LCDC: u16 = 0xFF40;
+const LY: u16 = 0xFF44;
+const LYC: u16 = 0xFF46;
+const STAT: u16 = 0xFF41;
+const SCY: u16 = 0xFF42;
+const SCX: u16 = 0xFF43;
+const WY: u16 = 0xFF4A;
+const WX: u16 = 0xFF4B;
+const BGP: u16 = 0xFF47;
+const OBP0: u16 = 0xFF48;
+const OBP1: u16 = 0xFF49;
+//const BGPS: u16 = 0xFF68;
 
-fn decode_lcdc(memory: &Memory){
-    let lcdc = memory.read(LCDC);
-    
-    //lcd and ppu enable
-}
+// bit maks for each flag
+const LCD_EN: u8 = 1 << 7;
+const WIN_TM: u8 = 1 << 6;
+const WIN_EN: u8 = 1 << 5;
+const BGWIN_TILES: u8 = 1 << 4;
+const BG_TM: u8 = 1 << 3;
+const OBJ_S: u8 = 1 << 2;
+const OBJ_EN: u8 = 1 << 1;
+const BGWIN_EN: u8 = 1 << 0;
+
+// bit masks for STAT reg
+const LYC_INT_SEL: u8 = 1 << 6;
+const M2_INT_SEL: u8 = 1 << 5;
+const M1_INT_SEL: u8 = 1 << 4;
+const M0_INT_SEL: u8 = 1 << 3;
+const LYC_EQ_LY: u8 = 1 << 2;
+const PPU_MODE: u8 = 0b11;
+
+// masks for BGP (palette)
+const ID3: u8 = 0xC0;
+const ID2: u8 = 0x30;
+const ID1: u8 = 0x0C;
+const ID0: u8 = 0x03;
+const PALETTE: [u32; 4] = [0xFFFFFFFF, 0xBBBBBBFF, 0x666666FF, 0x000000FF];
 
 #[derive(Copy, Clone)]
 struct Tile {
@@ -84,7 +114,6 @@ const PIXELBUFFER_WIDTH: usize = 240;
 const PIXELBUFFER_HEIGHT: usize = 240;
 const PIXELBUFFER_SIZE: usize = PIXELBUFFER_WIDTH * PIXELBUFFER_HEIGHT;
 
-const TB_0: u16 = 0x8000;
 
 use std::collections::VecDeque;
 
@@ -113,6 +142,10 @@ impl PPU {
         }
     }
     
+    fn updateCopyRegisters(&mut self, memory: &Memory) {
+        
+    }
+
     pub fn request_interrupt(&mut self, memory: &mut Memory) {
         let if_old = memory.read(IF);
         let if_new = if_old | 0b1 ;
@@ -121,6 +154,8 @@ impl PPU {
     
     fn getTile(&mut self, memory: &mut Memory){
         let mut tilemap = TMA_0;
+        
+
     }
 
     fn getTileHigh(&mut self, memory: &mut Memory){
@@ -128,8 +163,12 @@ impl PPU {
 
     fn getTileLow(&mut self, memory: &mut Memory){
     }
+    
 
     pub fn update(&mut self, memory: &mut Memory){
+        
+        self.lcdc = memory.read(LCDC);
+
         if self.ly < 153 {
             self.ly += 1;
         }else {
@@ -137,26 +176,25 @@ impl PPU {
         }
         memory.write(0xFF44, 0x10);
 
-        let lcdc = memory.read(LCDC);
 
-        let enable = bit!(lcdc, 7) != 0;
+        let enable = bit!(self.lcdc, 7) != 0;
 
-        let w_vram_bank = match bit!(lcdc, 4) {
+        let w_vram_bank = match bit!(self.lcdc, 4) {
             0u8 => VB_0,
             _ => VB_1
         };
 
-        let bg_vram_bank = match bit!(lcdc, 4) {
+        let bg_vram_bank = match bit!(self.lcdc, 4) {
             0u8 => VB_1,
             _ => VB_2
         };
 
-        let w_tma = match bit!(lcdc, 6) {
+        let w_tma = match bit!(self.lcdc, 6) {
             0 => TMA_0,
             _ => TMA_1
         };
 
-        let bg_tma = match bit!(lcdc, 4) {
+        let bg_tma = match bit!(self.lcdc, 4) {
             0 => TMA_0,
             _ => TMA_1
         };
