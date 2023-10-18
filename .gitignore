@@ -1,5 +1,6 @@
 /target
 /roms
 /test
+/tests/cpu_instrs
 *.hex
 *.log
