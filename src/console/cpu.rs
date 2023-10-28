@@ -55,9 +55,6 @@ pub enum Mode {
 
 // the cpu
 pub struct SharpSM83 {
-    pub mem_write_stack: Vec<(u8, u16)>,
-    pub mem_write: u8,
-
     machine_cycles: u32,
 
     // 8-bit general purpose
@@ -72,6 +69,7 @@ pub struct SharpSM83 {
     //8-bit flag / 0-3 grounded to 0, 4 carry flag C, 5, half-carry H, 6 negative N, 7 zero Z
     f: u8,
     ime: u8,
+    
 
     //16-bit special purpose
     pub pc: u16,
@@ -91,9 +89,6 @@ impl SharpSM83 {
     }
     pub fn new() -> SharpSM83 {
         SharpSM83 {
-            mem_write_stack: Vec::new(),
-            mem_write: 0,
-
             a: 0x00,
             b: 0x00,
             c: 0x00,
@@ -121,9 +116,12 @@ impl SharpSM83 {
         self.verbose = b;
         self
     }
+    
+    //returns the number of clock cycles for the instruction
+    pub fn run(&mut self, memory: &mut Memory) -> Option<usize> {
 
-    pub fn run(&mut self, memory: &Memory) -> Result<(), FailedCPUInstruction> {
-
+        //eprintln!("PC: {:#0X}", self.pc);
+        
         let start = Instant::now();
         let handled_interrupt = if self.ime == 1 {
             self.handle_interrupt(memory)
@@ -133,15 +131,13 @@ impl SharpSM83 {
         } else {
             let opcode = self.fetch(memory);
             let instr = self.decode(opcode);
-            //eprintln!("{:?}", instr);
             self.execute(instr, memory);
-            //self.print_info();
         }
 
         let instr_time = (start.elapsed().as_nanos() as f64) / (10u32.pow(9) as f64);
         //eprintln!("cpu_speed: {:.5} hz", 1./instr_time);
 
-        Ok(())
+        Some(8)
     }
 
     pub fn raw_run(&mut self, memory: &mut Memory) {
@@ -150,16 +146,6 @@ impl SharpSM83 {
         eprintln!("{:?}", instr);
         self.execute(instr, memory);
         self.print_info();
-
-        while self.mem_write_stack.len() > 0 {
-            self.mem_write -= 1;
-            let data = self.mem_write_stack.pop();
-
-            match data {
-                Some((x, y)) => memory.write(y, x),
-                _ => ()
-            }
-        }
     }
 
     fn fetch(&mut self, memory: &Memory) -> u8 {
@@ -217,7 +203,7 @@ impl SharpSM83 {
         }
         // LD (rr) A, LD A (rr)
         else if op_x == 0b00 && op_z == 0b010{
-            if op_y == 0b0 {
+            if op_q == 0b1 {
                 LDAwRRa(op_p)
             }
             else {
@@ -396,8 +382,9 @@ impl SharpSM83 {
         }
     }
 
-    pub fn execute(&mut self, instr: Instruction, memory: &Memory) {
-
+    pub fn execute(&mut self, instr: Instruction, memory: &mut Memory) {
+        
+        //eprintln!("{instr:?}");
         match instr {
             ErrInstr{opcode} => {
                 match opcode {
@@ -410,10 +397,10 @@ impl SharpSM83 {
             HALT => self.halt = true,
             DI => self.ime = 0,
             EI => self.ime = 1,
-            LDRwR(r1, r2) => self.set_reg(r1, self.get_reg(r2)),
+            LDRwR(r1, r2) => self.set_reg(r1, self.get_reg(r2), memory),
             LDRwN(r) => {
                 let n = self.fetch(memory);
-                self.set_reg(r, n);
+                self.set_reg(r, n, memory);
             },
             LDH(from, n) => {
                 let loc = u8_to_u16(0xFF, match n {
@@ -421,8 +408,8 @@ impl SharpSM83 {
                     false => self.get_reg(C),
                 });
                 match from {
-                    true => {self.write(loc, self.get_reg(A))}
-                    false => {self.set_reg(A, self.read(loc, memory))}
+                    true => {self.write(loc, self.get_reg(A), memory)}
+                    false => {self.set_reg(A, self.read(loc, memory), memory)}
                 } 
             }
             LDAwNNa(from) => {
@@ -430,73 +417,76 @@ impl SharpSM83 {
                 let msb = self.fetch(memory);
                 let loc = u8_to_u16(msb, lsb);
                 match from {
-                    false => {self.set_reg(A, self.read(loc, memory))}
-                    true => {self.write(loc, self.get_reg(A))}
+                    false => {self.set_reg(A, self.read(loc, memory), memory)}
+                    true => {self.write(loc, self.get_reg(A), memory)}
                 } 
             },
             LDRRawA(rr) => {
-                let loc = self.get_rr_s(rr);
-                self.write(loc, self.get_reg(A));
+                let loc = self.get_rr_s(rr, memory);
+                self.write(loc, self.get_reg(A), memory);
             },
             LDAwRRa(rr) => {
-                let loc = self.get_rr_s(rr);
-                self.set_reg(A, self.read(loc, memory));
+                let loc = self.get_rr_s(rr, memory);
+                self.set_reg(A, self.read(loc, memory), memory);
             },
             LDrrnn(rr) => {
                 let lsb = self.fetch(memory);
                 let msb = self.fetch(memory);
                 let nn = u8_to_u16(msb, lsb);
-                self.load_rr(rr, nn);
+                self.load_rr(rr, nn, memory);
             },
             LDNNawSP => {
                 let lsb = self.fetch(memory);
                 let msb = self.fetch(memory);
                 let loc = u8_to_u16(msb, lsb);
-                self.write(loc, low_u16(self.sp));
-                self.write(loc + 1, high_u16(self.sp));
+                self.write(loc, low_u16(self.sp), memory);
+                self.write(loc + 1, high_u16(self.sp), memory);
             },
             PUSHrr(rr) => {
                 let rr = self.get_rr(rr);
                 let lsb = low_u16(rr);
                 let msb = high_u16(rr);
                 self.sp = self.sp.overflowing_sub(1).0;
-                self.write(self.sp, msb);
+                self.write(self.sp, msb, memory);
                 self.sp = self.sp.overflowing_sub(1).0;
-                self.write(self.sp, lsb);
+                self.write(self.sp, lsb, memory);
             },
             POPrr(rr) => {
                 let lsb = self.read(self.sp, &memory);
                 self.sp += 1;
                 let msb = self.read(self.sp, &memory);
                 self.sp += 1;
-                self.load_rr_views(rr, u8_to_u16(msb, lsb));
+                self.load_rr_views(rr, u8_to_u16(msb, lsb), memory);
             },
             LDHLwSP => {
                 let e = self.fetch(memory);
                 let result = i16_add(self.get_rr(SP) as i16 , e as i8 as i16);
-                self.load_rr(HL, result.0);
+                self.load_rr(HL, result.0, memory);
                 self.set_carry_flags(result.1, result.2);
             }
             LDSPwHL => {
-                self.load_rr(SP, self.get_reg_view(H, L));
+                self.load_rr(SP, self.get_reg_view(H, L), memory);
             },
             DecR(r) => {
                 let rv = self.get_reg_or_mem(r, memory);
                 let result = rv.overflowing_sub(1);
-                self.set_reg(r, result.0);
+                self.set_reg(r, result.0, memory);
 
                 let half_c = (rv & 0xF).overflowing_sub(1).1;
-                let flag = make_flag(result.0, true, half_c, self.check_conditions(FLAG_C));
-                self.f = flag;
+                self.set_flag(FLAG_Z, result.0 == 0);
+                self.set_flag(FLAG_N, true);
+                self.set_flag(FLAG_H, half_c);
+                //println!("c: {}, e: {}", self.c, self.e);
             },
             IncR(r) => {
                 let rv = self.get_reg_or_mem(r, memory);
                 let result = rv.overflowing_add(1);
-                self.set_reg(r, result.0);
+                self.set_reg(r, result.0, memory);
 
                 let half_c = (rv & 0xF) + (0x1) > 0xF;
-                let flag = make_flag(result.0, false, half_c, self.check_conditions(FLAG_C));
-                self.f = flag;
+                self.set_flag(FLAG_Z, result.0 == 0);
+                self.set_flag(FLAG_N, false);
+                self.set_flag(FLAG_H, half_c);
             },
             Add(_) | Sub(_) | And(_) | Or(_) | Adc(_) | Sbc(_) | Xor(_) | Cmp(_) | Addn | Subn | Andn | Orn | Adcn | Sbcn | Xorn | Cmpn => {
                 let n = match instr {
@@ -509,15 +499,18 @@ impl SharpSM83 {
                     Sub(_) | Subn => u8_sub(self.a, n),
                     And(_) | Andn => u8_and(self.a, n),
                     Or(_) | Orn => u8_or(self.a, n),
-                    Adc(_) | Adcn => u8_add(self.a, u8_add(n, self.f & 0b0010_000).0),
-                    Sbc(_) | Sbcn => u8_sub(self.a, u8_add(n, self.f & 0b0010_000).0),
+                    Adc(_) | Adcn => u8_add(self.a, u8_add(n, self.f & 0b0001_0000 >> 4).0),
+                    Sbc(_) | Sbcn => u8_sub(self.a, u8_add(n, self.f & 0b0001_0000 >> 4).0),
                     Xor(_) | Xorn => u8_xor(self.a, n),
-                    Cmp(_) | Cmpn => u8_cmp(self.a, n),
+                    Cmp(_) | Cmpn => { u8_cmp(self.a, n)},
 
                     _ => (0, 0)
                 };
-                self.set_reg(A, result.0);
-                self.f = low_u8(self.f) + result.1;    
+                match instr {
+                    Cmp(_) | Cmpn => (),
+                    _ => self.set_reg(A, result.0, memory),
+                }
+                self.f = result.1;    
             },
             AddSpE => {
                 let e = self.fetch(memory);
@@ -534,14 +527,17 @@ impl SharpSM83 {
                     ADDHLrr(_) => {
                         let hl = self.get_rr(HL);
                         rr_key = HL;
-                        u16_add(hl, rrv)
+                        let result = u16_add(hl, rrv);
+                        self.set_flag(FLAG_N, false);
+                        self.set_flag(FLAG_H, result.2);
+                        self.set_flag(FLAG_C, result.1);
+                        result
+    
                     }
                     _ => panic!("Should not be here")
                 };
 
-                self.load_rr(rr_key, result.0);
-
-                self.set_carry_flags(result.1, result.2);
+                self.load_rr(rr_key, result.0, memory);
             },
 
             DAA => {
@@ -588,7 +584,7 @@ impl SharpSM83 {
                 };
             },
             CPL => {
-                self.a = !self.a;
+                self.a = self.a ^ 0xFF;
                 self.f |= 0b0110_0000;
             },
             RLCA | RLA => {
@@ -596,8 +592,7 @@ impl SharpSM83 {
                 let c = (self.f & 0x10) >> 4;
 
                 self.a = self.a << 1;
-                self.f = 0;
-                self.set_flag(FLAG_C, b == 1);
+                self.set_flags(false, false, false, b == 1);
 
                 match instr {
                     RLA => self.a |= c,
@@ -610,8 +605,7 @@ impl SharpSM83 {
                 let c = (self.f & 0x10) >> 4;
 
                 self.a = self.a >> 1;
-                self.f = 0;
-                self.set_flag(FLAG_C, b == 1);
+                self.set_flags(false, false, false, b == 1);
 
                 match instr {
                     RRA => self.a |= c << 7,
@@ -648,6 +642,7 @@ impl SharpSM83 {
             },
             JRcce(cc) => {
                 let e = self.fetch(memory);
+                //println!("{:#0b}", self.f);
                 if self.check_conditions(cc) {
                     self.pc = (self.pc as i16 + e as i8 as i16) as u16;
                 }
@@ -663,10 +658,10 @@ impl SharpSM83 {
                 };
                 if cc {
                     self.sp = u16_sub(self.sp, 1).0;
-                    self.write(self.sp, high_u16(self.pc));
+                    self.write(self.sp, high_u16(self.pc), memory);
 
                     self.sp = u16_sub(self.sp, 1).0;
-                    self.write(self.sp, low_u16(self.pc));
+                    self.write(self.sp, low_u16(self.pc), memory);
 
                     self.pc = nn;
                 }
@@ -698,10 +693,10 @@ impl SharpSM83 {
             },
             INTn(nn) => {
                 self.sp = u16_sub(self.sp, 1).0;
-                self.write(self.sp, low_u16(self.pc));
+                self.write(self.sp, low_u16(self.pc), memory);
 
                 self.sp = u16_sub(self.sp, 1).0;
-                self.write(self.sp, high_u16(self.pc));
+                self.write(self.sp, high_u16(self.pc), memory);
 
                 self.pc = nn;
                 self.ime = 0;
@@ -711,7 +706,7 @@ impl SharpSM83 {
         }
     }
 
-    pub fn execute_prefix(&mut self, instr: Instruction, memory: &Memory) {
+    pub fn execute_prefix(&mut self, instr: Instruction, memory: &mut Memory) {
         match instr {
             RLCr(r) | RRCr(r) | RLr(r) | RRr(r) | SLAr(r) | SRAr(r) | SRLr(r) => {
                 let mut rv = self.get_reg_or_mem(r, memory);
@@ -738,29 +733,38 @@ impl SharpSM83 {
                 };
 
                 rv = set_bit(rv, new_bit_loc, new_bit);
-
-                self.set_reg(r, rv);
-                self.set_flag(FLAG_C, b == 1);
+                
+                self.set_reg(r, rv, memory);
+                self.set_flags(rv == 0, false, false, b == 1);
             },
             SWAPr(r) => {
                 let rv = self.get_reg_or_mem(r, memory);
                 let n_msb = low_u8(rv) << 4;
                 let n_lsb = high_u8(rv);
-                self.set_reg(r, n_msb + n_lsb);
+                self.set_reg(r, n_msb + n_lsb, memory);
+                self.set_flags(rv == 0, false, false, false);
             },
             BITnr { n, r } =>  {
-                self.set_flag(FLAG_Z, bit!(self.get_reg_or_mem(r, memory), n) != 0);
+                let reg_value = self.get_reg_or_mem(r, memory);
+                let bit = reg_value & (0x1 << n);
+                self.set_flag(FLAG_Z, bit == 0);
                 self.set_flag(FLAG_N, false);
                 self.set_flag(FLAG_H, true);
             }
-            RESnr { n, r } => self.set_reg(r, set_bit(self.get_reg_or_mem(r, memory), n, false)),
-            SETnr { n, r } => self.set_reg(r, set_bit(self.get_reg_or_mem(r, memory), n, true)),
+            RESnr { n, r } => self.set_reg(r, set_bit(self.get_reg_or_mem(r, memory), n, false), memory),
+            SETnr { n, r } => self.set_reg(r, set_bit(self.get_reg_or_mem(r, memory), n, true), memory),
             ErrInstr {opcode} => panic!("Should not be here lol {:#0X}", opcode),
             _ => panic!("also should not be here lmfao"),
         }
         eprintln!("{:?}", instr);
     }
 
+    fn set_flags(&mut self, z: bool, n: bool, h: bool, c: bool) {
+        self.set_flag(FLAG_Z, z);
+        self.set_flag(FLAG_N, n);
+        self.set_flag(FLAG_H, h);
+        self.set_flag(FLAG_C, c);
+    }
 
     fn set_carry_flags(&mut self, a: bool, b: bool) {
         self.f = 0;
@@ -776,24 +780,11 @@ impl SharpSM83 {
         }
     }
 
-    pub fn quick_init(&mut self){
-        self.a = 0;
-        self.f = 0;
-        self.b = 0xff;
-        self.c = 0x13;
-        self.d = 0;
-        self.e = 0xC1;
-        self.h = 0x84;
-        self.l = 0x03;
-        self.pc = 0x100;
-        self.sp = 0xFFFE;
-    }
-
     pub fn init_emu(&mut self) {
         self.mode = Mode::EMU;
     }
 
-    fn handle_interrupt(&mut self, memory: &Memory) -> bool {
+    fn handle_interrupt(&mut self, memory: &mut Memory) -> bool {
         let (if_reg, ie_reg) = (memory.read(IF), memory.read(IE));
 
         if if_reg & 0b1 > 0 && ie_reg & 0b1 > 0 {
@@ -857,7 +848,7 @@ impl SharpSM83 {
 
     }
 
-    pub fn decompile(&mut self, memory: &Memory) {
+    pub fn decompile(&mut self, memory: &mut Memory) {
         let data = memory.get_data();
         while (self.pc as usize) < data.len() {
             let opcode = self.fetch(memory);
@@ -873,6 +864,10 @@ impl SharpSM83 {
         let flag_c = self.f & 0b0001_0000 != 0;
         //println!("{flag_z}, {cc}");
         //println!("{flag_c}, {cc}");
+        //JP NZ = 0b1100_0010
+        //JP NC = 0b1101_0010
+        //JP Z = 0b1100_1010
+        //JP C = 0b1101_1010
         match cc {
             0b00 => !flag_z,
             0b01 => flag_z,
@@ -885,9 +880,10 @@ impl SharpSM83 {
     }
 
     fn set_flag(&mut self, flag_bit: u8, value: bool) {
+        let bit = 0b1 << flag_bit;
         match value {
-            true => {self.f |= 0b1 << flag_bit},
-            false => {self.f &= !(0b1 << flag_bit)}
+            true => {self.f |= bit} ,
+            false => {self.f &= !bit}
         }
     }
 
@@ -895,23 +891,23 @@ impl SharpSM83 {
         self.f
     }
 
-    fn set_rr_from_u16(&mut self, r1: u8, r2: u8, nn: u16) {
-        self.set_reg(r1, (nn >> 8) as u8);
-        self.set_reg(r2, nn as u8);
+    fn set_rr_from_u16(&mut self, r1: u8, r2: u8, nn: u16, memory: &mut Memory) {
+        self.set_reg(r1, (nn >> 8) as u8, memory);
+        self.set_reg(r2, nn as u8, memory);
     }
 
-    pub fn get_rr_s(&mut self, rr_key: u8) -> u16 {
+    pub fn get_rr_s(&mut self, rr_key: u8, memory: &mut Memory) -> u16 {
         match rr_key {
             BC => self.get_reg_view(B, C),
             DE => self.get_reg_view(D, E),
             0x2 => {
                 let r = self.get_reg_view(H, L);
-                self.load_rr(HL, u16_add(r, 1).0);
+                self.load_rr(HL, u16_add(r, 1).0, memory);
                 r
             },
             0x3 => {
                 let r = self.get_reg_view(H, L);
-                self.load_rr(HL, u16_sub(r, 1).0);
+                self.load_rr(HL, u16_sub(r, 1).0, memory);
                 r
             },
             _ => 0x00,
@@ -928,23 +924,23 @@ impl SharpSM83 {
         }
     }
 
-    fn load_rr(&mut self, rr_key: u8, nn: u16) {
+    fn load_rr(&mut self, rr_key: u8, nn: u16, memory: &mut Memory) {
         match rr_key {
-            BC => self.set_rr_from_u16(B, C, nn),
-            DE => self.set_rr_from_u16(D, E, nn),
-            HL => self.set_rr_from_u16(H, L, nn),
+            BC => self.set_rr_from_u16(B, C, nn, memory),
+            DE => self.set_rr_from_u16(D, E, nn, memory),
+            HL => self.set_rr_from_u16(H, L, nn, memory),
             SP => self.sp = nn,
             _ => (),
         }
     }
 
-    fn load_rr_views(&mut self, rr_key: u8, nn: u16) {
+    fn load_rr_views(&mut self, rr_key: u8, nn: u16, memory: &mut Memory) {
         match rr_key {
-            BC => self.set_rr_from_u16(B, C, nn),
-            DE => self.set_rr_from_u16(D, E, nn),
-            HL => self.set_rr_from_u16(H, L, nn),
+            BC => self.set_rr_from_u16(B, C, nn, memory),
+            DE => self.set_rr_from_u16(D, E, nn, memory),
+            HL => self.set_rr_from_u16(H, L, nn, memory),
             3 => {
-                self.set_reg(A, (nn >> 8) as u8);
+                self.set_reg(A, (nn >> 8) as u8, memory);
                 self.f = nn as u8;
             },
             _ => (),
@@ -955,7 +951,7 @@ impl SharpSM83 {
         u8_to_u16(self.get_reg(x), self.get_reg(y))
     }
 
-    fn set_reg(&mut self, r: u8, n: u8) {
+    fn set_reg(&mut self, r: u8, n: u8, memory: &mut Memory) {
         match r {
             B => self.b = n,
             C => self.c = n,
@@ -966,7 +962,7 @@ impl SharpSM83 {
             A => self.a = n,
             READ_HL => {
                 let loc = self.get_rr(HL);
-                self.write(loc, n);
+                self.write(loc, n, memory);
             }
             _ => (),
         }
@@ -1006,10 +1002,12 @@ impl SharpSM83 {
         memory.read(addr)
     }
 
-    fn write(&mut self, addr: u16, reg: u8) {
-        println!("wrote {0:02X} at address {1:04X}", reg, addr);
-        self.mem_write_stack.push((reg, addr));
-        self.mem_write += 1;
+    fn write(&mut self, addr: u16, byte: u8, memory: &mut Memory) { 
+        if addr == 0xFF44 {
+            ()
+        }
+        println!("wrote {0:02X} at address {1:04X}", byte, addr);
+        memory.write(addr, byte);
     }
 
     pub fn print_info(&self) {

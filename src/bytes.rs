@@ -1,39 +1,3 @@
-
-
-#[macro_export]
-macro_rules! bit {
-    ($a:expr, $b:expr) => {
-
-        {
-            $a & (0b1 << $b)
-        }
-    };
-}   
-
-pub(crate) use bit;
-
-
-pub enum Shift {
-    LEFT,
-    RIGHT
-}
-
-impl Shift {
-    pub fn s_u8(&self, x: u8, bits: u8) -> u8 {
-        match self {
-            Shift::LEFT => x << bits,
-            Shift::RIGHT => x >> bits
-        }    
-    }
-
-    pub fn s_i8(&self, x: i8, bits: u8) -> i8 {
-        match self {
-            Shift::LEFT => x << bits,
-            Shift::RIGHT => x >> bits
-        }    
-    }
-}
-
 pub fn set_bit(x: u8, bit: u8, value: bool) -> u8 {
     match value {
         true => {x | (0b1 << bit)},
@@ -92,6 +56,9 @@ pub fn i16_add(a: i16, b: i16) -> (u16, bool, bool) {
 }
 
 // fix the carry bits here
+// .0 is the result
+// .1 is the carry flag
+// .2 is the half carry flag
 pub fn u16_add(a: u16, b: u16) -> (u16, bool, bool) {
     let result = a.overflowing_add(b);
     (
@@ -121,7 +88,7 @@ pub fn u8_add(a: u8, b: u8) -> (u8, u8) {
 
 pub fn u8_sub(a: u8, b: u8) -> (u8, u8) {
     let result = a.overflowing_sub(b);
-    let half_c = (a & 0xF).overflowing_sub(b & 0xF).1;
+    let half_c = (a & 0xF) + (b & 0xF) > 0xF;
     let full_c = result.1;
     let flag = make_flag(result.0, true, half_c, full_c);
     (result.0, flag)

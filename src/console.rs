@@ -29,36 +29,44 @@ use std::fs::read;
 
 pub const LCD_WIDTH: usize = 160;
 pub const LCD_HEIGHT: usize = 144;
+pub const LCD_SIZE: usize = LCD_WIDTH*LCD_HEIGHT;
 const SCREEN_WIDTH: u32 = LCD_WIDTH as u32 * 4;
 const SCREEN_HEIGHT: u32 = LCD_HEIGHT as u32 * 4;
 
 pub struct GameBoy {
     instruction_count: u16,
     accumulator: u32,
+
     cpu: SharpSM83,
+    clock_acc: usize,
+    clock: bool,
+
     pub gamepack: Memory,
     pub write_idx: u16,
     rom_path: String,
     verbose: bool,
     has_cartridge: bool,
     timer: HTimer,
-    ppu_timer: Instant,
 }
 
 impl GameBoy {
 
     pub fn new() -> GameBoy {
+        let memory = Memory::new(8 * KBYTE);
         GameBoy {
             accumulator: 0,
             instruction_count: 10000,
+
+            clock_acc: 0,
+            clock: false,
+
+            gamepack: memory,
             cpu: SharpSM83::new(),
-            gamepack: Memory::new(8 * KBYTE),
             write_idx: 0,
             rom_path: String::new(),
             verbose: false,
             has_cartridge: false,
             timer: HTimer::new(),
-            ppu_timer: Instant::now(),
 
         }
     }
@@ -83,13 +91,18 @@ impl GameBoy {
         /*for i in 0x104..0x14F {
           self.gamepack.write(i as u16, 0xFF);
           }*/
+        let logo = [
+            0xCE, 0xED, 0x66, 0x66, 0xCC, 0x0D, 0x00, 0x0B, 0x03, 0x73, 0x00, 0x83, 0x00, 0x0C, 0x00, 0x0D,
+            0x00, 0x08, 0x11, 0x1F, 0x88, 0x89, 0x00, 0x0E, 0xDC, 0xCC, 0x6E, 0xE6, 0xDD, 0xDD, 0xD9, 0x99,
+            0xBB, 0xBB, 0x67, 0x63, 0x6E, 0x0E, 0xEC, 0xCC, 0xDD, 0xDC, 0x99, 0x9F, 0xBB, 0xB9, 0x33, 0x3E
+        ];
 
         match rom_path {
             Some(game_rom) => {
                 match read(game_rom) {
                     Ok(buffer) => {
                         //rom banks
-                        for i in 0..0x8000 {
+                        for i in 0..buffer.len() {
                             self.gamepack.write(i as u16, buffer[i]);
                         } 
 
@@ -108,13 +121,34 @@ impl GameBoy {
             },
             None => match read(BOOT_ROM_PATH) {
                 Ok(buffer) => {
+                    //load default boot rom
                     for i in 0..min(0x8000, buffer.len()) {
                         self.gamepack.write(i as u16, buffer[i]);
+                    }
+
+
+                    for i in 0..logo.len() {
+                        //self.gamepack.write(0x0104 + i as u16, logo[i]);
                     }
                 },
                 Err(error) => panic!("{error} boot rom error, file not found or incorrect file"),
             },
         };
+        match read(BOOT_ROM_PATH) {
+            Ok(buffer) => {
+                //load default boot rom
+                for i in 0..min(0x8000, buffer.len()) {
+                    self.gamepack.write(i as u16, buffer[i]);
+                }
+
+                for i in 0..logo.len() {
+                    self.gamepack.write(0x0104 + i as u16, logo[i]);
+                }
+            },
+            Err(error) => panic!("{error} boot rom error, file not found or incorrect file"),
+        }
+
+
 
 
     }
@@ -149,9 +183,8 @@ impl GameBoy {
 
         let mut prev_keys = HashSet::new();
         let mut start = Instant::now();
-        let mut ppu_timer = Instant::now();
         let mut render_timer = Instant::now();
-        let mut cpu_clock = Instant::now();
+        let mut cpu_timer = Instant::now();
 
         'running: loop {
             start = Instant::now();
@@ -183,16 +216,21 @@ impl GameBoy {
 
             self.update(start);
 
-            if ppu_timer.elapsed() > Duration::new(0, (1000000000./59.7) as u32) {
-                ppu.request_interrupt(&mut self.gamepack);
-                ppu.update(&mut self.gamepack);
-                ppu_timer = Instant::now();
+            //self.clock_acc % 456 {
+           // }
+
+            if cpu_timer.elapsed() > Duration::new(0, 4194/4 as u32) {
+                self.clock = true;
+                cpu_timer = Instant::now();
+            } else {
+                self.clock = false;
             }
 
-            if self.cpu.pc == self.cpu.pc {
+            if self.clock {
                 self.tick_cpu();
-                //self.cpu.print_info();
             }
+            
+            ppu.update(self.clock_acc, &mut self.gamepack);
 
             // only updates the screen 60 times per second
             if render_timer.elapsed() > Duration::new(0, (1_000_000_000. / 59.73) as u32){
@@ -220,23 +258,13 @@ impl GameBoy {
 
         if !self.cpu.stop {
 
-            match self.cpu.run(&self.gamepack) {
-                Ok(()) => {
-                    while self.cpu.mem_write_stack.len() > 0 {
-                        self.cpu.mem_write -= 1;
-                        let dat = self.cpu.mem_write_stack.pop();
+            match self.cpu.run(&mut self.gamepack) {
+                Some(cycles) => {
+                    self.clock_acc = cycles;
 
-                        match dat {
-                            Some((x, y)) => self.gamepack.write(y, x),
-                            _ => ()
-                        }
-                    }
                 },
-                //Err(error) => println!("{error}"),
-                _ => (), 
+                None => panic!("something went wrong"), 
             }
-
-            self.accumulator += 1;
         }
 
     }

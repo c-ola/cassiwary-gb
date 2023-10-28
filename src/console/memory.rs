@@ -93,6 +93,7 @@ impl Memory {
         if addr >= 0xC000 && addr <= 0xDDFF {
             self.data[(addr + 0x2000) as usize] = n;
         }
+
         self.data[addr as usize] = n;
     }
 
