@@ -133,13 +133,13 @@ impl SharpSM83 {
         } else {
             let opcode = self.fetch(memory);
             let instr = self.decode(opcode);
-            eprintln!("{:?}", instr);
+            //eprintln!("{:?}", instr);
             self.execute(instr, memory);
+            //self.print_info();
         }
 
         let instr_time = (start.elapsed().as_nanos() as f64) / (10u32.pow(9) as f64);
         //eprintln!("cpu_speed: {:.5} hz", 1./instr_time);
-        //self.print_info();
 
         Ok(())
     }
@@ -165,8 +165,8 @@ impl SharpSM83 {
     fn fetch(&mut self, memory: &Memory) -> u8 {
         // ---- get instruction from memory  ----
         let opcode = memory.read(self.pc);
-
-        eprintln!("fetched {0:#04X} at pc: {1:#04X}", opcode, self.pc);     
+        
+        //eprintln!("fetched {0:#04X} at pc: {1:#04X}", opcode, self.pc);     
 
         self.pc = u16_add(self.pc, 1).0;
 
@@ -596,7 +596,6 @@ impl SharpSM83 {
                 let c = (self.f & 0x10) >> 4;
 
                 self.a = self.a << 1;
-                println!("{:#b}", self.a);
                 self.f = 0;
                 self.set_flag(FLAG_C, b == 1);
 
@@ -645,7 +644,6 @@ impl SharpSM83 {
             },
             JRe => {
                 let e = self.fetch(memory) as i8;
-                println!("pc: {}, e: {}", self.pc, e);
                 self.pc = (self.pc as i16 + e as i16 ) as u16;
             },
             JRcce(cc) => {
@@ -684,7 +682,7 @@ impl SharpSM83 {
                     self.sp = u16_add(self.sp, 1).0;
                     let mut msb = self.read(self.sp, memory);
                     self.sp = u16_add(self.sp, 1).0;
-                    println!("msb: {msb:#0X}, lsb: {lsb:#0X}");
+                    //println!("msb: {msb:#0X}, lsb: {lsb:#0X}");
                     match instr {
                         RETI => self.ime = 1,
                         RSTn(n) => {
@@ -874,7 +872,7 @@ impl SharpSM83 {
         let flag_z = self.f & 0b1000_0000 != 0;
         let flag_c = self.f & 0b0001_0000 != 0;
         //println!("{flag_z}, {cc}");
-        println!("{flag_c}, {cc}");
+        //println!("{flag_c}, {cc}");
         match cc {
             0b00 => !flag_z,
             0b01 => flag_z,

@@ -110,15 +110,16 @@ impl Memory {
         Ok(())
     }
 
-    pub fn print(&self, addr: usize, lines: usize){
+    pub fn print(&self, addr: u16, lines: u16){
 
         println!("Showing address from Memory: {0:04X} to {1:04X}", addr, addr + lines * 16);
 
         for i in (addr..(addr + lines * 16)).step_by(16) {
             print!("{:04X}:", i);
             std::io::stdout().flush().unwrap();
-            for j in 0..16 {
-                print!(" {:02X}", self.data[i + j]);
+            for j in 0..16 as usize {
+                let index = i + j as u16;
+                print!(" {:02X}", self.data[index as usize]);
                 std::io::stdout().flush().unwrap();
             }
             println!("");

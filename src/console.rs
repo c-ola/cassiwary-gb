@@ -27,8 +27,10 @@ use std::collections::HashSet;
 
 use std::fs::read;
 
-const SCREEN_WIDTH: u32 = 960;
-const SCREEN_HEIGHT: u32 = 960;
+pub const LCD_WIDTH: usize = 160;
+pub const LCD_HEIGHT: usize = 144;
+const SCREEN_WIDTH: u32 = LCD_WIDTH as u32 * 4;
+const SCREEN_HEIGHT: u32 = LCD_HEIGHT as u32 * 4;
 
 pub struct GameBoy {
     instruction_count: u16,
@@ -135,7 +137,7 @@ impl GameBoy {
         let texture_creator = canvas.texture_creator();
 
         let mut texture = texture_creator
-            .create_texture_target(PixelFormatEnum::RGBA8888, 240, 240)
+            .create_texture_target(PixelFormatEnum::RGBA8888, 160, 144)
             .map_err(|e| e.to_string())?;
 
         canvas.clear();
@@ -187,10 +189,9 @@ impl GameBoy {
                 ppu_timer = Instant::now();
             }
 
-            println!("{:#0b}", self.gamepack.read(IF));
             if self.cpu.pc == self.cpu.pc {
                 self.tick_cpu();
-                self.cpu.print_info();
+                //self.cpu.print_info();
             }
 
             // only updates the screen 60 times per second
@@ -252,7 +253,6 @@ impl GameBoy {
         println!("Reading instructinos");
 
         while self.accumulator < self.instruction_count as u32 {
-            println!("Instruction: {0}", self.accumulator);
             self.tick_cpu();
         }
 

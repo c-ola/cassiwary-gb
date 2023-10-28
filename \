@@ -64,10 +64,10 @@ const ID2: u8 = 0x30;
 const ID1: u8 = 0x0C;
 const ID0: u8 = 0x03;
 const PALETTE: [Color; 4] = [
-    Color::RGB(0xe0, 0xf8, 0xd0), 
-    Color::RGB(0x88, 0xc0, 0x70), 
-    Color::RGB(0x34, 0x68, 0x56), 
-    Color::RGB(0x08, 0x18, 0x20), 
+    Color::RGBA(0xFF, 0xFF, 0xFF, 0xFF), 
+    Color::RGBA(0xBB, 0xBB, 0xBB, 0xFF), 
+    Color::RGBA(0x66, 0x66, 0x66, 0xFF), 
+    Color::RGBA(0x00, 0x00, 0x00, 0xFF), 
 ];
 
 #[derive(Copy, Clone)]
@@ -106,7 +106,7 @@ impl Tile {
 }
 
 //https://gbdev.io/pandocs/pixel_fifo.html
-#[derive(Debug)]
+
 struct Pixel {
     pub color: u8,
     pub palette: u8,
@@ -164,9 +164,6 @@ pub struct PPU {
     w_px: [[u8; 4]; PIXELBUFFER_SIZE],
 }
 
-const SAMPLE_VRAM: [u8; 16] = [0x3C, 0x7E, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x7E, 0x5E, 0x7E, 0x0A, 0x7C, 0x56, 0x38, 0x7C];
-//const SAMPLE_TILE: [u8; 16] = 
-
 impl PPU {
     pub fn new() -> PPU {
         PPU {
@@ -202,8 +199,8 @@ impl PPU {
         //self.ly = memory.read(LY); 
         //self.lyc = memory.read(LYC); 
         self.stat = memory.read(STAT); 
-        //self.scy = memory.read(SCY); 
-        //self.scx = memory.read(SCX); 
+        self.scy = memory.read(SCY); 
+        self.scx = memory.read(SCX); 
         self.wy = memory.read(WY); 
         self.wx = memory.read(WX); 
         self.bgp = memory.read(BGP); 
@@ -217,8 +214,7 @@ impl PPU {
         memory.write(IF, if_new);
     }
 
-    fn get_tile(&mut self, memory: &mut Memory) -> u16 {
-        
+    fn getTile(&mut self, memory: &mut Memory) -> (u8, u8) {
         let mut tilemap = TMA_0;
 
         if self.lcdc & BG_TM != 0 {
@@ -231,74 +227,87 @@ impl PPU {
 
         self.fx = (self.scx / 8 + self.fx) & 0x1F;
         self.fy = (self.ly + self.scy) & 0xFF;
+        println!("fetcher: {}, {}", self.fx, self.fy);
+        let loc = tilemap + self.fx as u16 + self.fy as u16;
+        let low = memory.read(loc);
+        let high = memory.read(loc + 1);
 
-        let block_y = self.fy as u16 / 8;
-        let loc = tilemap + self.fx as u16 + 32 * block_y;
-        println!("{loc:#0X}, fetcher: {}, {}", self.fx, block_y);
+        println!("loc: {:#0X}, low: {:#0X}, high: {:#0X}", loc, low, high);
 
-        memory.read(loc) as u16
-    }
-
-    fn mix_bytes(low: u8, high: u8) -> [u8; 8] {
-        let mut pixels = [0u8; 8];
-        
-        for i in 0..8 {
-            let bit = 0x1 << i as u8;
-            let lsb = (low & bit) >> i;
-            let msb = (high & bit) >> i;
-            pixels[7 - i] = lsb + (msb << 1);
-        }
-
-        pixels
+        (low, high)
+        //memory.print(tilemap, 100);
     }
 
     pub fn update(&mut self, memory: &mut Memory){
-        for i in 0..SAMPLE_VRAM.len() {
-            //memory.write(0x8190 + i as u16, SAMPLE_VRAM[i]);
-        }
-
-        //memory.write(0x9800, 0x19);
-
-
+        
         self.updateRegisters(memory);
         for _ in 0..LCD_HEIGHT {
 
-            println!("\nscanline: {}, tile: {}", self.ly, self.fx);
-            for i in 0..20 {
-                let tile_index = self.get_tile(memory);
-            
-                let vram_bank = VB_0;
-                let index_low = vram_bank + tile_index * 16 + (self.ly as u16 % 8) * 2;
-                let index_high = index_low + 1;
-                let low = memory.read(index_low);
-                let high = memory.read(index_high);
-                //let low = memory.read(0x8190 + (self.ly as u16 % 8) * 2);
-                //let high = memory.read(0x8190 + (self.ly as u16 % 8) * 2 + 1);
-                println!("{tile_index}, low: {:#0X}, high: {:#0X}", low, high);
+            let (low, high) = self.getTile(memory);
 
-                let pixels = PPU::mix_bytes(low, high);
-                for p in 0..8 {
-                    self.bg_fifo.push_back(Pixel::new(pixels[p], 0, 0, 0));
-                }
-
-                self.internal_render(i);
-
-                self.fx = self.fx + 1;
+            for i in 0..8usize {
+                let mask = 0x80 >> i;
+                let right = (low & mask) >> (7 - i);
+                let left = (high & mask) >> (7 - i);
+                let color = (left << 1) + right;
+                self.bg_fifo.push_back(Pixel::new(color, 0, 0, 0));
             }
-            self.fx = 0;
+            for _ in 0..32 {
+                self.internal_render();
+            }
+            println!("{}, {}", self.fx, self.ly);
             self.ly = (self.ly + 1) % LCD_HEIGHT as u8;
 
+            self.fx = (self.fx + 1) % LCD_WIDTH as u8;
         }
-        self.ly = 0;
-        println!("scroll: {}, {}", self.scx, self.scy);
-
+        //panic!("idk");
     }
 
-    pub fn internal_render(&mut self, x: usize) {
+
+    /*
+       if self.ly < 153 {
+       self.ly += 1;
+       }else {
+       self.ly = 0;
+       }
+       memory.write(0xFF44, 0x10);
+
+
+       let enable = bit!(self.lcdc, 7) != 0;
+
+       let w_vram_bank = match bit!(self.lcdc, 4) {
+       0u8 => VB_0,
+       _ => VB_1
+       };
+
+       let bg_vram_bank = match bit!(self.lcdc, 4) {
+       0u8 => VB_1,
+       _ => VB_2
+       };
+
+       let w_tma = match bit!(self.lcdc, 6) {
+       0 => TMA_0,
+       _ => TMA_1
+       };
+
+       let bg_tma = match bit!(self.lcdc, 4) {
+       0 => TMA_0,
+       _ => TMA_1
+       };
+
+       for i in 0..TILEMAP_SIZE{
+       let index = memory.read(0x9800 + i as u16) as u16;
+       self.bg_map[i].update(index + VB_0, memory);
+    //self.bg_map[i].update(i as u16 * 16 + 0x8000, memory);
+    //self.w_map[i].update(index + vram_bank, memory);
+    //self.w_map[i].update(index + , memory);
+    }*/
+    pub fn internal_render(&mut self) {
         for i in 0..8 {
             let pixel = self.bg_fifo.pop_front().unwrap_or(Pixel::new(0, 0, 0, 0));
             let color = pixel.color;
-            self.bg[x * 8 + i + LCD_WIDTH * self.ly as usize] = Color::from(PALETTE[color as usize]);
+            self.bg[self.lx as usize + 160 * self.ly as usize] = Color::from(PALETTE[color as usize]);
+            self.lx = (self.lx + 1) % LCD_WIDTH as u8;
         }
     }
 

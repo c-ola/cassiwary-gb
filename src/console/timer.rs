@@ -30,7 +30,7 @@ impl HTimer {
                 (value, false) => self.div = value,
                 (_, true) => self.div = 0
             }
-            println!("div: {}", self.div);
+            //println!("div: {}", self.div);
         }
                 
     }
