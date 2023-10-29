@@ -756,7 +756,6 @@ impl SharpSM83 {
             ErrInstr {opcode} => panic!("Should not be here lol {:#0X}", opcode),
             _ => panic!("also should not be here lmfao"),
         }
-        eprintln!("{:?}", instr);
     }
 
     fn set_flags(&mut self, z: bool, n: bool, h: bool, c: bool) {
@@ -1006,7 +1005,7 @@ impl SharpSM83 {
         if addr == 0xFF44 {
             ()
         }
-        println!("wrote {0:02X} at address {1:04X}", byte, addr);
+        //println!("wrote {0:02X} at address {1:04X}", byte, addr);
         memory.write(addr, byte);
     }
 

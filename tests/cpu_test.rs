@@ -8,20 +8,20 @@ use cassowary_gb::console::regids::*;
 #[test]
 fn misc() {
     let mut cpu = SharpSM83::new();
-    let memory = Memory::new(KBYTE);
-    cpu.execute(EI, &memory);
+    let mut memory = Memory::new(KBYTE);
+    cpu.execute(EI, &mut memory);
     assert!(cpu.is_interruptible());
-    cpu.execute(DI, &memory);
+    cpu.execute(DI, &mut memory);
     assert!(!cpu.is_interruptible());
-    cpu.execute(NOP, &memory);
-    cpu.execute(STOP, &memory);
-    cpu.execute(HALT, &memory);
+    cpu.execute(NOP, &mut memory);
+    cpu.execute(STOP, &mut memory);
+    cpu.execute(HALT, &mut memory);
     assert!(cpu.stop && cpu.halt);
-    cpu.execute(CCF, &memory);
+    cpu.execute(CCF, &mut memory);
     assert_eq!(cpu.get_flag(), 0b0001_0000);
-    cpu.execute(CCF, &memory);
+    cpu.execute(CCF, &mut memory);
     assert_eq!(cpu.get_flag(), 0b0000_0000);
-    cpu.execute(SCF, &memory);
+    cpu.execute(SCF, &mut memory);
     assert_eq!(cpu.get_flag(), 0b0001_0000);
 }
 
