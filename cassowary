@@ -1,1 +1,5 @@
 #!/bin/bash
+
+cpu_instr_path="/home/nikola/programming/personal/cpu_instrs/individual/05-op rp.gb"
+
+cargo run path="${cpu_instr_path}"

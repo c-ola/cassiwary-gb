@@ -67,14 +67,11 @@ impl SharpSM83 {
             let handled_interrupt = if self.ime == 1 {
                 self.handle_interrupt(memory)
             } else { false };
-            //self.ime = 0;
             if handled_interrupt {
             } 
             else if !self.halt {
-                print!("pc: {:#04X}, ", self.pc);
                 let opcode = self.fetch(memory);
                 let instr = Instruction::decode(opcode);
-                println!("instr {:?}", instr);
                 self.execute(instr, memory);
             }
             return Some(4)
@@ -132,8 +129,8 @@ impl SharpSM83 {
                     false => self.get_reg_int(C),
                 });
                 match from {
-                    true => {self.write(loc, self.get_reg_int(A), memory)}
-                    false => {self.set_reg(A, memory.read(loc), memory)}
+                    true => {memory.write(loc, self.get_reg_int(A))}
+                    false => {self.set_reg_int(A, memory.read(loc))}
                 } 
             }
             LDAwNNa(from) => {
@@ -190,7 +187,7 @@ impl SharpSM83 {
                 let e = self.fetch(memory);
                 let result = i16_add(self.get_reg_view(SP) as i16 , e as i8 as i16);
                 self.set_rr(HL, result.0);
-                self.set_carry_flags(result.1, result.2);
+                self.set_flags(false, false, result.2, result.1);
             }
             LDSPwHL => {
                 self.set_rr(SP, self.get_reg_view(HL));
@@ -365,14 +362,13 @@ impl SharpSM83 {
                 }
             },
             JRe => {
-                let e = self.fetch(memory) as i8;
-                self.pc = (self.pc as i16 + e as i16 ) as u16;
+                let e = self.fetch(memory) as i8 as i16;
+                self.pc = self.pc.overflowing_add_signed(e).0;
             },
             JRcce(cc) => {
-                let e = self.fetch(memory);
-                //println!("{:#0b}", self.f);
+                let e = self.fetch(memory) as i8 as i16;
                 if self.check_conditions(cc) {
-                    self.pc = (self.pc as i16 + e as i8 as i16) as u16;
+                    self.pc = self.pc.overflowing_add_signed(e).0;
                 }
             },
             CALLnn | CALLccnn(_) => {
@@ -423,10 +419,9 @@ impl SharpSM83 {
 
             },
             INTn(nn) => {
-                self.sp = u16_sub(self.sp, 1).0;
+                self.sp = self.sp.overflowing_sub(1).0;
                 self.write(self.sp, high_u16(self.pc), memory);
-
-                self.sp = u16_sub(self.sp, 1).0;
+                self.sp = self.sp.overflowing_sub(1).0;
                 self.write(self.sp, low_u16(self.pc), memory);
 
                 self.pc = nn;
@@ -686,10 +681,7 @@ impl SharpSM83 {
             BC => self.set_reg2(B, C, nn),
             DE => self.set_reg2(D, E, nn),
             HL => self.set_reg2(H, L, nn),
-            AF => {
-                self.set_reg_int(A, (nn >> 8) as u8);
-                self.f = nn as u8;
-            },
+            AF => self.set_reg2(A, F, nn),
             _ => (),
         }
     }

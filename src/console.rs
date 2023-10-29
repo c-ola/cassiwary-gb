@@ -2,12 +2,15 @@ pub mod cpu;
 pub mod memory;
 pub mod ppu;
 pub mod timer;
+pub mod joypad;
 pub mod regids;
+
 
 use crate::ppu::*;
 use crate::cpu::*;
 use crate::memory::*;
 use crate::timer::*;
+use crate::joypad::*;
 use crate::regids::*;
 
 use std::time::{Instant, Duration};
@@ -38,6 +41,7 @@ pub struct GameBoy {
     rom_path: String,
     verbose: bool,
     timer: HTimer,
+    joypad: Joypad
 }
 
 impl GameBoy {
@@ -53,6 +57,7 @@ impl GameBoy {
             rom_path: String::new(),
             verbose: false,
             timer: HTimer::new(),
+            joypad: Joypad::default(),
 
         }
     }
@@ -82,7 +87,9 @@ impl GameBoy {
         }
 
     }
-
+fn print_type_of<T>(_: &T) {
+    println!("{}", std::any::type_name::<T>())
+}
     pub fn run_emu(&mut self) -> Result<(), String>{
         let mut ppu = PPU::new();
 
@@ -149,11 +156,11 @@ impl GameBoy {
                 .pressed_scancodes()
                 .filter_map(Keycode::from_scancode)
                 .collect();
-
+            
             // Get the difference between the new and old sets.
             let new_keys = &keys - &prev_keys;
             let old_keys = &prev_keys - &keys;
-
+            
             if !broken {
                 for breakpoint in breakpoints {
                     if self.cpu.pc == breakpoint as u16 {
@@ -182,17 +189,23 @@ impl GameBoy {
                 break 'running
             }
 
-            ppu.update(self.clock_acc, &mut self.gamepack);
+
+            self.joypad.update(&mut self.gamepack);
+
             
             if cpu_timer.elapsed() > Duration::new(0, 4194 / 4 as u32) {
                 self.clock = true;
                 cpu_timer = Instant::now();
             } else {
                 self.clock = false;
+                self.clock_acc = 0;
             }
 
+            
             if self.clock && (!broken || new_keys.contains(&Keycode::Return)) {
                 self.tick_cpu();
+                self.timer.update(self.clock_acc, &mut self.gamepack);
+                ppu.update(self.clock_acc, &mut self.gamepack);
             }
 
 
@@ -217,44 +230,6 @@ impl GameBoy {
             self.gamepack.print(0, 16);
             self.cpu.print();
         }   
-    }
-
-    /*fn update(&mut self){
-    //increment div register
-    //self.timer.update_div(start);
-    let mut div = self.gamepack.read(DIV);
-    if start.elapsed() > DIV_DUR {
-    match div.overflowing_add(1) {
-    (value, false) => div = value,
-    (_, true) => div = 0
-    }
-    self.gamepack.write(DIV, div);
-    }
-
-    let mut tima = self.gamepack.read(TIMA);
-    let mut tac = self.gamepack.read(TAC);
-    let mut tma = self.gamepack.read(TMA);
-    let tima_en = (tac & 0b100) != 0;
-    let clk_s = tac & 0b11;
-
-    if start.elapsed() > TIMA_DUR[clk_s as usize] && tima_en {
-    match tima.overflowing_add(1) {
-    (value, false) => tima = value,
-    (_, true) => {
-    tima = tma;
-    self.request_interrupt(2);
-    }
-    }
-    self.gamepack.write(TIMA, tima);
-    self.gamepack.print(0xFF00, 10);
-    }
-
-    }*/
-
-    fn request_interrupt(&mut self, bit: u8) {
-        let if_old = self.gamepack.read(IF);
-        let if_new = if_old | (0b1 << bit);
-        self.gamepack.write(IF, if_new);
     }
 
     pub fn load_memory(&mut self, data: &[u8]) {
@@ -303,21 +278,21 @@ impl GameBoy {
                 }
 
             },
-            None => eprintln!("No Game Rom Specified"),
-        };
-        match read(BOOT_ROM_PATH) {
-            Ok(buffer) => {
-                //load default boot rom
-                for i in 0..min(0x8000, buffer.len()) {
-                    //self.gamepack.write(i as u16, buffer[i]);
-                }
+            None => match read(BOOT_ROM_PATH) {
+                Ok(buffer) => {
+                    //load default boot rom
+                    for i in 0..min(0x8000, buffer.len()) {
+                        self.gamepack.write(i as u16, buffer[i]);
+                    }
 
-                for i in 0..logo.len() {
-                    //self.gamepack.write(0x0104 + i as u16, logo[i]);
-                }
+                    for i in 0..logo.len() {
+                        self.gamepack.write(0x0104 + i as u16, logo[i]);
+                    }
+                },
+                Err(error) => panic!("{error} boot rom error, file not found or incorrect file"),
             },
-            Err(error) => panic!("{error} boot rom error, file not found or incorrect file"),
-        }
+        };
+
 
     }
 
