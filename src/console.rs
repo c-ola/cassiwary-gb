@@ -114,6 +114,23 @@ impl GameBoy {
         let mut prev_keys = HashSet::new();
         let mut render_timer = Instant::now();
         let mut cpu_timer = Instant::now();
+        let mut counter = 0;
+        let instrs = -1;
+        
+        let mut broken = false;
+        let breakpoints = [
+            //0x260, //flush wram 1
+            //0x272, //
+            //0x281, // flush OAM
+            //0x28A, // flush RAM 
+            //0x293, //copy dam transfer routine into hram
+            //0x2A0, // call Flush_BG1
+            //0x2A3, // call Sound_Init
+            //0x2C4, // main loop
+            0x2C7, // call state machine
+            0x2C7, // call state machine
+            0x8000,
+        ];
 
         'running: loop {
 
@@ -138,26 +155,42 @@ impl GameBoy {
             let new_keys = &keys - &prev_keys;
             let old_keys = &prev_keys - &keys;
 
-            if !new_keys.is_empty() || !old_keys.is_empty() {
-                println!("new_keys: {:?}\told_keys:{:?}", new_keys, old_keys);
+            if !broken {
+                for breakpoint in breakpoints {
+                    if self.cpu.pc == breakpoint as u16 {
+                        println!("reached breakpoint, {breakpoint:#04X}");
+                        broken = true;
+                        counter += 1;
+                        break;
+                    }
+                }
             }
 
-            if cpu_timer.elapsed() > Duration::new(0, 4194/4 as u32) {
+            if new_keys.contains(&Keycode::P) {
+                self.cpu.print();
+            }
+
+            if broken && new_keys.contains(&Keycode::Return) {
+                //broken = false;
+            }
+
+            if counter == instrs {
+                break 'running
+            }
+
+            ppu.update(self.clock_acc, &mut self.gamepack);
+            
+            if cpu_timer.elapsed() > Duration::new(0, 4194 / 4 as u32) {
                 self.clock = true;
                 cpu_timer = Instant::now();
             } else {
                 self.clock = false;
             }
 
-            if self.clock {
+            if self.clock && (!broken || new_keys.contains(&Keycode::Return)) {
                 self.tick_cpu();
             }
 
-            //break point 
-            if self.cpu.pc == 0x100 {
-            }
-            
-            ppu.update(self.clock_acc, &mut self.gamepack);
 
             if render_timer.elapsed() > Duration::new(0, (1_000_000_000. / 59.73) as u32){
                 ppu.render(&mut canvas, &mut texture)?;
@@ -178,8 +211,8 @@ impl GameBoy {
         if self.verbose {
             self.log_memory();
             self.gamepack.print(0, 16);
-            self.cpu.print_info();
-        }
+            self.cpu.print();
+        }   
     }
 
     /*fn update(&mut self){
@@ -272,11 +305,11 @@ impl GameBoy {
             Ok(buffer) => {
                 //load default boot rom
                 for i in 0..min(0x8000, buffer.len()) {
-                    self.gamepack.write(i as u16, buffer[i]);
+                    //self.gamepack.write(i as u16, buffer[i]);
                 }
 
                 for i in 0..logo.len() {
-                    self.gamepack.write(0x0104 + i as u16, logo[i]);
+                    //self.gamepack.write(0x0104 + i as u16, logo[i]);
                 }
             },
             Err(error) => panic!("{error} boot rom error, file not found or incorrect file"),

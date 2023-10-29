@@ -1,5 +1,3 @@
-use cassowary_gb::bytes::u8_to_u16;
-use cassowary_gb::console::*;
 use cassowary_gb::console::cpu::*;
 use cassowary_gb::console::cpu::instruction::Instruction::*;
 use cassowary_gb::console::memory::*;
@@ -48,19 +46,19 @@ fn load_8bit() {
     }
     
     cpu.raw_run(&mut memory);
-    assert_eq!(cpu.get_reg(C), 0x07);
+    assert_eq!(cpu.get_reg_int(C), 0x07);
     cpu.raw_run(&mut memory);
-    assert_eq!(cpu.get_reg(A), 0x01);
+    assert_eq!(cpu.get_reg_int(A), 0x01);
     cpu.raw_run(&mut memory);
-    assert_eq!(cpu.get_reg(D), 0x07);
+    assert_eq!(cpu.get_reg_int(D), 0x07);
     cpu.raw_run(&mut memory);
     assert_eq!(memory.read(0xFF04), 0x01);
     cpu.raw_run(&mut memory);
-    assert_eq!(cpu.get_reg(A), 0x00);
+    assert_eq!(cpu.get_reg_int(A), 0x00);
     cpu.raw_run(&mut memory);
-    assert_eq!(cpu.get_reg(A), 0x01);
+    assert_eq!(cpu.get_reg_int(A), 0x01);
     cpu.raw_run(&mut memory);
-    assert_eq!(memory.read(cpu.get_rr(DE)), 0x01);
+    assert_eq!(memory.read(cpu.get_reg_view(DE)), 0x01);
 }
 
 #[test]
@@ -86,19 +84,19 @@ fn load_16bit() {
     }
     
     cpu.raw_run(&mut memory);
-    assert_eq!(cpu.get_rr(HL), 0xFF07);
+    assert_eq!(cpu.get_reg_view(HL), 0xFF07);
     cpu.raw_run(&mut memory);
-    assert_eq!(cpu.get_rr(BC), 0xFA10);
+    assert_eq!(cpu.get_reg_view(BC), 0xFA10);
     cpu.raw_run(&mut memory);
-    assert_eq!(cpu.get_rr(SP), 0xFF07);
+    assert_eq!(cpu.get_reg_view(SP), 0xFF07);
     cpu.raw_run(&mut memory);
-    assert_eq!(cpu.get_rr(HL), 0xFF0C);
+    assert_eq!(cpu.get_reg_view(HL), 0xFF0C);
     cpu.raw_run(&mut memory);
-    assert_eq!(cpu.get_rr(SP), 0xFF05);
-    assert_eq!(memory.read(cpu.get_rr(SP)), 0x0C);
+    assert_eq!(cpu.get_reg_view(SP), 0xFF05);
+    assert_eq!(memory.read(cpu.get_reg_view(SP)), 0x0C);
     cpu.raw_run(&mut memory);
-    assert_eq!(cpu.get_rr(SP), 0xFF07);
-    assert_eq!(memory.read(cpu.get_rr(SP)), 0x00);
+    assert_eq!(cpu.get_reg_view(SP), 0xFF07);
+    assert_eq!(memory.read(cpu.get_reg_view(SP)), 0x00);
     cpu.raw_run(&mut memory);
     assert_eq!(memory.read(0xFF00), 0x07);
     assert_eq!(memory.read(0xFF01), 0xFF);
@@ -142,49 +140,49 @@ fn rotates_and_shifts() {
     cpu.raw_run(&mut memory);
 
     cpu.raw_run(&mut memory);
-    assert_eq!(cpu.get_reg(A), 0b0011_1001);
+    assert_eq!(cpu.get_reg_int(A), 0b0011_1001);
     assert_eq!(cpu.get_flag(), 0b0001_0000);
     
     cpu.raw_run(&mut memory);
-    assert_eq!(cpu.get_reg(A), 0b0111_0011);
+    assert_eq!(cpu.get_reg_int(A), 0b0111_0011);
     assert_eq!(cpu.get_flag(), 0b0000_0000);
  
     cpu.raw_run(&mut memory);
-    assert_eq!(cpu.get_reg(A), 0b1011_1001);
+    assert_eq!(cpu.get_reg_int(A), 0b1011_1001);
     assert_eq!(cpu.get_flag(), 0b0001_0000);
     
     cpu.raw_run(&mut memory);
-    assert_eq!(cpu.get_reg(A), 0b1101_1100);
+    assert_eq!(cpu.get_reg_int(A), 0b1101_1100);
     assert_eq!(cpu.get_flag(), 0b0001_0000);
 
     cpu.raw_run(&mut memory);
 
     //rlc, rl, rrc, rr
     cpu.raw_run(&mut memory);
-    assert_eq!(cpu.get_reg(B), 0b11011010);
+    assert_eq!(cpu.get_reg_int(B), 0b11011010);
     assert_eq!(cpu.get_flag(), 0b0000_0000);
     cpu.raw_run(&mut memory); 
-    assert_eq!(cpu.get_reg(B), 0b10110100);
+    assert_eq!(cpu.get_reg_int(B), 0b10110100);
     assert_eq!(cpu.get_flag(), 0b0001_0000);
     cpu.raw_run(&mut memory);
-    assert_eq!(cpu.get_reg(B), 0b01011010);
+    assert_eq!(cpu.get_reg_int(B), 0b01011010);
     assert_eq!(cpu.get_flag(), 0b0000_0000);
     cpu.raw_run(&mut memory);
-    assert_eq!(cpu.get_reg(B), 0b00101101);
+    assert_eq!(cpu.get_reg_int(B), 0b00101101);
     assert_eq!(cpu.get_flag(), 0b0000_0000);
 
     //sla, swap, sra, srl
     cpu.raw_run(&mut memory);
-    assert_eq!(cpu.get_reg(B), 0b01011010);
+    assert_eq!(cpu.get_reg_int(B), 0b01011010);
     assert_eq!(cpu.get_flag(), 0b0000_0000);
     cpu.raw_run(&mut memory); 
-    assert_eq!(cpu.get_reg(B), 0b10100101);
+    assert_eq!(cpu.get_reg_int(B), 0b10100101);
     assert_eq!(cpu.get_flag(), 0b0000_0000);
     cpu.raw_run(&mut memory);
-    assert_eq!(cpu.get_reg(B), 0b11010010);
+    assert_eq!(cpu.get_reg_int(B), 0b11010010);
     assert_eq!(cpu.get_flag(), 0b0001_0000);
     cpu.raw_run(&mut memory);
-    assert_eq!(cpu.get_reg(B), 0b01101001);
+    assert_eq!(cpu.get_reg_int(B), 0b01101001);
     assert_eq!(cpu.get_flag(), 0b0000_0000);
     cpu.raw_run(&mut memory);
 }
@@ -210,7 +208,7 @@ fn arithmetic_8bit() {
     }
 
     cpu.raw_run(&mut memory);
-    assert_eq!(cpu.get_rr(BC), 0x0813);
+    assert_eq!(cpu.get_reg_view(BC), 0x0813);
 }
 
 #[test]
@@ -237,23 +235,23 @@ fn arithmetic_16bit(){
     }
 
     cpu.raw_run(&mut memory);
-    assert_eq!(cpu.get_rr(BC), 0x0813); 
+    assert_eq!(cpu.get_reg_view(BC), 0x0813); 
     cpu.raw_run(&mut memory);
-    assert_eq!(cpu.get_rr(SP), 0x7FFF); 
+    assert_eq!(cpu.get_reg_view(SP), 0x7FFF); 
     cpu.raw_run(&mut memory);
-    assert_eq!(cpu.get_rr(HL), 0x0001);
+    assert_eq!(cpu.get_reg_view(HL), 0x0001);
     cpu.raw_run(&mut memory);
-    assert_eq!(cpu.get_rr(DE), 0xFFFF);
+    assert_eq!(cpu.get_reg_view(DE), 0xFFFF);
     cpu.raw_run(&mut memory);
-    assert_eq!(cpu.get_rr(HL), 0x0814);
+    assert_eq!(cpu.get_reg_view(HL), 0x0814);
     assert_eq!(cpu.get_flag() & 0xF0, 0b00000000); 
     cpu.raw_run(&mut memory);
-    assert_eq!(cpu.get_rr(HL), 0x0813);
+    assert_eq!(cpu.get_reg_view(HL), 0x0813);
     assert_eq!(cpu.get_flag() & 0xF0, 0b00110000); 
     cpu.raw_run(&mut memory);
-    assert_eq!(cpu.get_rr(SP), 0x7FF9);
+    assert_eq!(cpu.get_reg_view(SP), 0x7FF9);
     cpu.raw_run(&mut memory);
-    assert_eq!(cpu.get_rr(HL), 0x8009);
+    assert_eq!(cpu.get_reg_view(HL), 0x8009);
     assert_eq!(cpu.get_flag() & 0xF0, 0b00010000); 
     cpu.raw_run(&mut memory);
 }
@@ -295,9 +293,9 @@ fn control_flow() {
     }
 
     cpu.raw_run(&mut memory);
-    assert_eq!(cpu.get_rr(SP), 0x7FFF);
+    assert_eq!(cpu.get_reg_view(SP), 0x7FFF);
     cpu.raw_run(&mut memory);
-    assert_eq!(cpu.get_rr(HL), 0x000B);
+    assert_eq!(cpu.get_reg_view(HL), 0x000B);
     cpu.raw_run(&mut memory);
     assert_eq!(cpu.get_flag() & 0x10, 0x10);
     
@@ -309,7 +307,7 @@ fn control_flow() {
     cpu.raw_run(&mut memory);
     assert_eq!(cpu.pc, 0x000A);
     cpu.raw_run(&mut memory);
-    assert_eq!(cpu.pc, cpu.get_rr(HL));
+    assert_eq!(cpu.pc, cpu.get_reg_view(HL));
     let pc_before = cpu.pc + 2;
     cpu.raw_run(&mut memory);
     assert_eq!(cpu.pc, pc_before + 0x0003);
@@ -350,7 +348,7 @@ fn prefix() {
     }
 
     cpu.raw_run(&mut memory);
-    assert_eq!(cpu.get_rr(BC), 0x0813);
+    assert_eq!(cpu.get_reg_view(BC), 0x0813);
 }
 
 

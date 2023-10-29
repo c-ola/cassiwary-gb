@@ -1,13 +1,11 @@
 use crate::console::Memory;
-use crate::bytes::*;
 use crate::console::*;
+use super::regids::IF;
 
 use sdl2::pixels::Color;
 use sdl2::render::{Texture, Canvas};
 use sdl2::video::Window;
 use sdl2::rect::Point;
-
-use super::regids::IF;
 
 use std::collections::VecDeque;
 
@@ -18,7 +16,6 @@ const PALLETTE: [[u8; 4]; 4] = [
     [0x00, 0x00, 0x00, 0xFF],
 
 ];
-
 
 const VB_0: u16 = 0x8000; // used when lcdc bit 7 = 1
 const VB_1: u16 = 0x8800;
@@ -37,6 +34,7 @@ const SCY: u16 = 0xFF42;
 const SCX: u16 = 0xFF43;
 const WY: u16 = 0xFF4A;
 const WX: u16 = 0xFF4B;
+const DMA: u16 = 0xFF46;
 const BGP: u16 = 0xFF47;
 const OBP0: u16 = 0xFF48;
 const OBP1: u16 = 0xFF49;
@@ -89,14 +87,6 @@ impl Pixel {
     }
 }
 
-const TM_DIM: (usize, usize) = (32, 32);
-const TILEMAP_SIZE: usize = TM_DIM.0 * TM_DIM.1;
-
-const PIXELBUFFER_WIDTH: usize = 160;
-const PIXELBUFFER_HEIGHT: usize = 144;
-const PIXELBUFFER_SIZE: usize = PIXELBUFFER_WIDTH * PIXELBUFFER_HEIGHT;
-
-
 pub struct PPU {
     dots: usize,
     mode: u8,
@@ -107,7 +97,6 @@ pub struct PPU {
 
     // registers
     lcdc: u8,
-    lx: u8,
     ly: u8,
     lyc: u8,
     stat: u8,
@@ -120,12 +109,9 @@ pub struct PPU {
     obp1: u8,
 
     bg_fifo: VecDeque<Pixel>,
-    bg: [Color; PIXELBUFFER_SIZE],
+    bg: [Color; LCD_SIZE],
 
 }
-
-const SAMPLE_VRAM: [u8; 16] = [0x3C, 0x7E, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x7E, 0x5E, 0x7E, 0x0A, 0x7C, 0x56, 0x38, 0x7C];
-//const SAMPLE_TILE: [u8; 16] = 
 
 impl PPU {
     pub fn new() -> PPU {
@@ -137,7 +123,6 @@ impl PPU {
             fy: 0,
 
             lcdc: 0u8,
-            lx: 0u8,
             ly: 0u8,
             lyc: 0u8,
             stat: 0u8,
@@ -190,7 +175,7 @@ impl PPU {
         }
 
         self.fx = (self.fx + self.scx / 8) & 0x1F;
-        self.fy = (self.ly + self.scy) & 0xFF;
+        self.fy = (self.ly.overflowing_add(self.scy).0) & 0xFF;
 
         let block_y = self.fy as u16 / 8;
         let loc = tilemap + self.fx as u16 + 32 * block_y;
@@ -211,8 +196,6 @@ impl PPU {
 
         pixels
     }
-    
-    
 
     pub fn update(&mut self, clock_acc: usize, memory: &mut Memory){
         
@@ -255,6 +238,9 @@ impl PPU {
         if self.ly > 143 {
             self.request_interrupt(memory);
             self.mode = VBLANK;
+        }
+        else {
+            self.mode = 0;
         }
 
         //println!("\nLY: {}\n", self.ly);

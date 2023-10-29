@@ -1,6 +1,5 @@
 goals from highest prio to lowest
 
-- implement all instructions (arithmetic, jump, etc)
-- interrupts
-- display graphics (memory mappings)
+- interrupts (stat interrupt, timer interrupt)
+- controls
 - sound

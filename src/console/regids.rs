@@ -13,11 +13,13 @@ pub const H: u8 = 0x4;
 pub const L: u8 = 0x5;
 pub const A: u8 = 0x7;
 pub const READ_HL: u8 = 0x6;
+pub const F: u8 = 0x6;
 
 pub const BC: u8 = 0x0;
 pub const DE: u8 = 0x1;
 pub const HL: u8 = 0x2;
 pub const SP: u8 = 0x3;
+pub const AF: u8 = 0x3;
 
 /*
  *

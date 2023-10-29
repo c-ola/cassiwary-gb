@@ -1,13 +1,13 @@
 use std::fs::File;
-use std::io::Write;
-use std::fs::read;
-use std::io::Result;
+use std::io::{Write, Result};
 
 pub const KBIT: usize = 1024;
 pub const KBYTE: usize = 8 * KBIT;
 
 pub const GLOBAL_START: u16 = 0x30;
 pub const BOOT_ROM_PATH: &str = "./gb_boot/DMG_ROM.gb";
+
+const DMA: u16 = 0xFF46;
 
 // size in bits
 #[derive(Debug)]
@@ -27,64 +27,6 @@ impl Memory {
         self.data.clone()
     }
 
-    pub fn quick_init(&mut self){
-        self.write(0xFF00, 0xCF);
-        self.write(0xFF01, 0x00);
-        self.write(0xFF02, 0x7E);
-        self.write(0xFF04, 0x18);
-        self.write(0xFF05, 0x00);
-        self.write(0xFF06, 0x00);
-        self.write(0xFF07, 0xF8);
-        self.write(0xFF0F, 0xE1);
-        self.write(0xFF10, 0x80);
-        self.write(0xFF11, 0xBF);
-        self.write(0xFF12, 0xF3);
-        self.write(0xFF13, 0xFF);
-        self.write(0xFF14, 0xBF);
-        self.write(0xFF16, 0x3F);
-        self.write(0xFF17, 0x00);
-        self.write(0xFF18, 0xFF);
-        self.write(0xFF19, 0xBF);
-        self.write(0xFF1A, 0x7F);
-        self.write(0xFF1B, 0xFF);
-        self.write(0xFF1C, 0x9F);
-        self.write(0xFF1D, 0xFF);
-        self.write(0xFF1E, 0xBF);
-        self.write(0xFF20, 0xFF);
-        self.write(0xFF21, 0x00);
-        self.write(0xFF22, 0x00);
-        self.write(0xFF23, 0xBF);
-        self.write(0xFF24, 0x77);
-        self.write(0xFF25, 0xF3);
-        self.write(0xFF26, 0xF1);
-        self.write(0xFF40, 0x91);
-        self.write(0xFF41, 0x81);
-        self.write(0xFF42, 0x00);
-        self.write(0xFF43, 0x00);
-        self.write(0xFF44, 0x91);
-        self.write(0xFF45, 0x00);
-        self.write(0xFF46, 0xFF);
-        self.write(0xFF47, 0xFC);
-        //self.write(0xFF48, 0x00);
-        //self.write(0xFF49, 0x00);
-        self.write(0xFF4A, 0xFF);
-        self.write(0xFF4B, 0xFF);
-        self.write(0xFF4D, 0xFF);
-        self.write(0xFF4F, 0xFF);
-        self.write(0xFF51, 0xFF);
-        self.write(0xFF52, 0xFF);
-        self.write(0xFF53, 0xFF);
-        self.write(0xFF54, 0xFF);
-        self.write(0xFF55, 0xFF);
-        self.write(0xFF55, 0xFF);
-        self.write(0xFF58, 0xFF);
-        self.write(0xFF69, 0xFF);
-        self.write(0xFF6A, 0xFF);
-        self.write(0xFF6B, 0xFF);
-        self.write(0xFF70, 0xFF);
-        self.write(0xFFFF, 0x00);
-    }
-
     pub fn read(&self, addr: u16) -> u8 {
         self.data[addr as usize]
     }
@@ -94,7 +36,22 @@ impl Memory {
             self.data[(addr + 0x2000) as usize] = n;
         }
 
+        if addr == DMA {
+            self.dma_transfer(n);
+        }
+
         self.data[addr as usize] = n;
+    }
+
+    fn dma_transfer(&mut self, source: u8) {
+        let length = 0x9F;
+        let source = (source as u16) << 8;
+        let dest = 0xFE00;
+        
+        for i in 0..length {
+            let byte = self.read(source + i);
+            self.write(dest + i, byte);
+        }
     }
 
     pub fn log(&self) -> Result<()> {
