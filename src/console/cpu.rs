@@ -67,14 +67,14 @@ impl SharpSM83 {
             let handled_interrupt = if self.ime == 1 {
                 self.handle_interrupt(memory)
             } else { false };
-
+            //self.ime = 0;
             if handled_interrupt {
             } 
             else if !self.halt {
-                //print!("pc: {:#04X}, ", self.pc);
+                print!("pc: {:#04X}, ", self.pc);
                 let opcode = self.fetch(memory);
                 let instr = Instruction::decode(opcode);
-                //println!("instr {:?}", instr);
+                println!("instr {:?}", instr);
                 self.execute(instr, memory);
             }
             return Some(4)
@@ -121,7 +121,7 @@ impl SharpSM83 {
             HALT => self.halt = true,
             DI => self.ime = 0,
             EI => self.ime = 1,
-            LDRwR(r1, r2) => self.set_reg(r1, self.get_reg_int(r2), memory),
+            LDRwR(r1, r2) => self.set_reg(r1, self.get_reg(r2, memory), memory),
             LDRwN(r) => {
                 let n = self.fetch(memory);
                 self.set_reg(r, n, memory);
@@ -168,8 +168,9 @@ impl SharpSM83 {
             },
             PUSHrr(rr) => {
                 let rr = self.get_reg_view_int(rr);
-                let lsb = low_u16(rr);
                 let msb = high_u16(rr);
+                let lsb = low_u16(rr);
+                
                 self.sp = self.sp.overflowing_sub(1).0;
                 self.write(self.sp, msb, memory);
                 self.sp = self.sp.overflowing_sub(1).0;
@@ -384,33 +385,36 @@ impl SharpSM83 {
                     _ => true
                 };
                 if cc {
-                    self.sp = u16_sub(self.sp, 1).0;
+                    self.sp = self.sp.overflowing_sub(1).0;
                     self.write(self.sp, high_u16(self.pc), memory);
-
-                    self.sp = u16_sub(self.sp, 1).0;
+                    self.sp = self.sp.overflowing_sub(1).0;
                     self.write(self.sp, low_u16(self.pc), memory);
-
+                    
                     self.pc = nn;
                 }
 
             },
-            RET | RETcc(_) | RETI | RSTn(_) => {
+            RSTn(n) => {
+                self.sp = self.sp.overflowing_sub(1).0;
+                self.write(self.sp, high_u16(self.pc), memory);
+                self.sp = self.sp.overflowing_sub(1).0;
+                self.write(self.sp, low_u16(self.pc), memory);
+
+                self.pc = RST[n as usize] as u16;
+            },
+            RET | RETcc(_) | RETI => {
                 let cc = match instr {
                     RETcc(cc) => self.check_conditions(cc),
                     _ => true
                 };
                 if cc {
-                    let mut lsb = memory.read(self.sp);
+                    let lsb = memory.read(self.sp);
                     self.sp = u16_add(self.sp, 1).0;
-                    let mut msb = memory.read(self.sp);
+                    let msb = memory.read(self.sp);
                     self.sp = u16_add(self.sp, 1).0;
                     //println!("msb: {msb:#0X}, lsb: {lsb:#0X}");
                     match instr {
                         RETI => self.ime = 1,
-                        RSTn(n) => {
-                            lsb = RST[n as usize];
-                            msb = 0x00;
-                        }
                         _ => ()
                     }
 
@@ -498,7 +502,7 @@ impl SharpSM83 {
     fn handle_interrupt(&mut self, memory: &mut Memory) -> bool {
 
         let (if_reg, ie_reg) = (memory.read(IF), memory.read(IE));
-        
+
         if if_reg & 0b1 > 0 && ie_reg & 0b1 > 0 {
             println!("VBlank interrupt");
             memory.write(IF, if_reg & 0b1111_1110);

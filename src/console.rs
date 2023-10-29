@@ -127,8 +127,7 @@ impl GameBoy {
             //0x2A0, // call Flush_BG1
             //0x2A3, // call Sound_Init
             //0x2C4, // main loop
-            0x2C7, // call state machine
-            0x2C7, // call state machine
+            //0x2C7, // call state machine
             0x8000,
         ];
 
@@ -169,7 +168,12 @@ impl GameBoy {
             if new_keys.contains(&Keycode::P) {
                 self.cpu.print();
             }
-
+            if new_keys.contains(&Keycode::S) {
+                self.gamepack.print(self.cpu.get_reg_view(SP) - 0xF, 3)
+            }
+            if new_keys.contains(&Keycode::H) {
+                self.gamepack.print(self.cpu.get_reg_view(HL) - 0xF, 3)
+            }
             if broken && new_keys.contains(&Keycode::Return) {
                 //broken = false;
             }
