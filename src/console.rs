@@ -190,11 +190,12 @@ fn print_type_of<T>(_: &T) {
             }
 
 
-            self.joypad.update(&mut self.gamepack);
+            self.joypad.update(&mut self.gamepack, &keys);
 
             
             if cpu_timer.elapsed() > Duration::new(0, 4194 / 4 as u32) {
                 self.clock = true;
+                self.timer.update(self.clock_acc, &mut self.gamepack);
                 cpu_timer = Instant::now();
             } else {
                 self.clock = false;
@@ -204,7 +205,6 @@ fn print_type_of<T>(_: &T) {
             
             if self.clock && (!broken || new_keys.contains(&Keycode::Return)) {
                 self.tick_cpu();
-                self.timer.update(self.clock_acc, &mut self.gamepack);
                 ppu.update(self.clock_acc, &mut self.gamepack);
             }
 

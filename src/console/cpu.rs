@@ -499,7 +499,7 @@ impl SharpSM83 {
         let (if_reg, ie_reg) = (memory.read(IF), memory.read(IE));
 
         if if_reg & 0b1 > 0 && ie_reg & 0b1 > 0 {
-            println!("VBlank interrupt");
+            //println!("VBlank interrupt");
             memory.write(IF, if_reg & 0b1111_1110);
             self.execute(INTn(0x0040), memory);
             return true

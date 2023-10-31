@@ -9,14 +9,6 @@ use sdl2::rect::Point;
 
 use std::collections::VecDeque;
 
-const PALLETTE: [[u8; 4]; 4] = [    
-    [0xff, 0xff, 0xff, 0xFF],
-    [0xaa, 0xaa, 0xaa, 0xFF],
-    [0x55, 0x55, 0x55, 0xFF],
-    [0x00, 0x00, 0x00, 0xFF],
-
-];
-
 const VB_0: u16 = 0x8000; // used when lcdc bit 7 = 1
 const VB_1: u16 = 0x8800;
 const VB_2: u16 = 0x9000; // objects only
@@ -144,7 +136,7 @@ impl PPU {
         self.lyc = memory.read(LYC); 
         self.stat = memory.read(STAT); 
         self.scy = memory.read(SCY); 
-        //self.scx = memory.read(SCX); 
+        self.scx = memory.read(SCX); 
         self.wy = memory.read(WY); 
         self.wx = memory.read(WX); 
         self.bgp = memory.read(BGP); 
@@ -163,23 +155,25 @@ impl PPU {
     }
 
     fn get_tile(&mut self, memory: &mut Memory) -> u16 {
+
+        let mut win_tma = if self.check_lcdc(WIN_TM) {
+            TMA_0
+        } else { TMA_1 };
         
-        let mut tilemap = TMA_0;
-
-        if self.lcdc & BG_TM != 0 {
-            tilemap = TMA_1;
-        }
-
-        if self.lcdc & BG_TM != 0 {
-            tilemap = TMA_1;
-        }
+        let mut bg_tma = if !self.check_lcdc(BG_TM) {
+            TMA_0
+        } else { TMA_1 };
+        
+        let tma = if self.check_lcdc(WIN_TM) {
+            win_tma
+        } else { bg_tma };
 
         self.fx = (self.fx + self.scx / 8) & 0x1F;
         self.fy = (self.ly.overflowing_add(self.scy).0) & 0xFF;
-
+        
         let block_y = self.fy as u16 / 8;
-        let loc = tilemap + self.fx as u16 + 32 * block_y;
-        //println!("{loc:#0X}, fetcher: {}, {}", self.fx, block_y);
+        let loc = tma + self.fx as u16 + 32 * block_y;
+        //println!("{loc:#04X}, fetcher: {}, {}", self.fx, block_y);
 
         memory.read(loc) as u16
     }
@@ -196,14 +190,21 @@ impl PPU {
 
         pixels
     }
-
+    
     pub fn update(&mut self, clock_acc: usize, memory: &mut Memory){
-        
-        self.dots += clock_acc;
-
         self.update_registers(memory);
         
-        if self.dots > 456 {
+        if !self.check_lcdc(BGWIN_EN) {
+            //println!("here")
+        }
+    
+        self.dots += clock_acc;
+        
+        if self.dots > 456 { 
+            if !self.check_lcdc(LCD_EN) {
+                //self.clear();
+                return
+            }
             self.do_scan_line(memory);
         }
  
@@ -215,13 +216,20 @@ impl PPU {
             self.fx = 0;
             for i in 0..20 {
                 let tile_index = self.get_tile(memory);
+                
 
-                let vram_bank = VB_0;
+                let mut vram_bank = VB_0;
+
+                if self.lcdc & WIN_EN != 0 {
+                    vram_bank = if self.lcdc & BGWIN_TILES != 0{
+                    VB_0
+                    } else { VB_1 };
+                }
+                
                 let index_low = vram_bank + tile_index * 16 + (self.fy as u16 % 8) * 2;
                 let index_high = index_low + 1;
                 let low = memory.read(index_low);
                 let high = memory.read(index_high);
-                //println!("{tile_index}, low: {:#0X}, high: {:#0X}", low, high);
 
                 let pixels = PPU::mix_bytes(low, high);
                 for p in 0..8 {
@@ -238,12 +246,11 @@ impl PPU {
         if self.ly > 143 {
             self.request_interrupt(memory);
             self.mode = VBLANK;
+            //self.clear();
         }
         else {
             self.mode = 0;
         }
-
-        //println!("\nLY: {}\n", self.ly);
 
         self.ly = (self.ly + 1) % 154;
         self.dots = 0;
@@ -253,8 +260,18 @@ impl PPU {
         for i in 0..8 {
             let pixel = self.bg_fifo.pop_front().unwrap_or(Pixel::new(0, 0, 0, 0));
             let color = pixel.color;
-            self.bg[x * 8 + i + LCD_WIDTH * self.ly as usize] = Color::from(PALETTE[color as usize]);
+            self.bg[x * 8 + i + LCD_WIDTH * self.ly as usize] = PALETTE[color as usize];
         }
+    }
+
+    fn clear(&mut self) {
+        for i in 0..LCD_SIZE {
+            self.bg[i] == PALETTE[0];
+        }
+    }
+    
+    fn check_lcdc(&self, mask: u8) -> bool {
+        self.lcdc & mask != 0
     }
 
     pub fn render(&mut self, canvas: &mut Canvas<Window>, texture: &mut Texture) -> Result<(), String> {
@@ -270,25 +287,6 @@ impl PPU {
                 texture_canvas.set_draw_color(color);
                 texture_canvas.draw_point(Point::new(x as i32, y as i32)).expect("cant draw point");
             }
-
-
-
-            /*for tile_idx in 0..TILEMAP_SIZE {
-              let t_x = tile_idx % 32;
-              let t_y = tile_idx / 32;
-
-              let pixel_data = self.bg_map[tile_idx].pixel_data;
-
-              for i in 0..64 {
-              let color = pixel_data[i];
-              let color = Color::RGBA(color[0], color[1], color[2], color[3]);
-              let x = 8 * t_x + i % 8;
-              let y = 8 * t_y + i / 8;
-              texture_canvas.set_draw_color(color);
-              texture_canvas.draw_point(Point::new(x as i32, y as i32)).expect("cant draw point");
-              }
-
-              }*/
 
         });
 
