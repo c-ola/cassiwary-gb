@@ -8,6 +8,7 @@ pub const GLOBAL_START: u16 = 0x30;
 pub const BOOT_ROM_PATH: &str = "./gb_boot/DMG_ROM.gb";
 
 const DMA: u16 = 0xFF46;
+const JOYP: u16 = 0xFF00;
 
 // size in bits
 #[derive(Debug)]
@@ -31,16 +32,23 @@ impl Memory {
         self.data[addr as usize]
     }
 
-    pub fn write(&mut self, addr: u16, n: u8){
+    pub fn write(&mut self, addr: u16, byte: u8){
         if addr >= 0xC000 && addr <= 0xDDFF {
-            self.data[(addr + 0x2000) as usize] = n;
+            self.data[(addr + 0x2000) as usize] = byte;
         }
 
-        if addr == DMA {
-            self.dma_transfer(n);
+        match addr {
+            DMA => self.dma_transfer(byte),
+            JOYP => self.data[addr as usize] |= byte & 0xF0,
+            _ => self.data[addr as usize] = byte,
+
         }
 
-        self.data[addr as usize] = n;
+        self.data[addr as usize] = byte;
+    }
+
+    pub fn write_io(&mut self, addr: u16, byte:u8) {
+        self.data[addr as usize] = byte;
     }
 
     fn dma_transfer(&mut self, source: u8) {

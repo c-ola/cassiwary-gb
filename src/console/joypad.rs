@@ -5,6 +5,7 @@ use std::collections::HashSet;
 use sdl2::keyboard::Keycode;
 
 use super::memory::Memory;
+use super::regids::IF;
 
 #[derive(Default, Debug)]
 pub struct Joypad {
@@ -17,7 +18,6 @@ pub struct Joypad {
     left: bool,
     right: bool,
     
-    input: u8,
     buttons: u8,
     dpad: u8,
 }
@@ -25,8 +25,8 @@ pub struct Joypad {
 impl Joypad {
 
     pub fn update(&mut self, memory: &mut Memory, keys: &HashSet<Keycode>) {
-        let sel_buttons = memory.read(JOYP) & 0b0001_0000 == 0;
-        let sel_dpad = memory.read(JOYP) & 0b0010_0000 == 0;
+        let sel_buttons = memory.read(JOYP) & 0b0010_0000 == 0;
+        let sel_dpad = memory.read(JOYP) & 0b0001_0000 == 0;
         
         self.a = if keys.contains(&Keycode::X) {
             true
@@ -54,21 +54,34 @@ impl Joypad {
             true
         } else { false };   
         
-        let mut input = memory.read(JOYP);
-        //println!("{input:#08b}");
+        let dpad = self.dpad_to_bin();
+        let buttons = self.buttons_to_bin();
+
         if sel_buttons {
-            input = self.buttons_to_bin();
+            memory.write_io(JOYP, buttons);
+            self.buttons = buttons;
         }
         if sel_dpad {
-            input = self.dpad_to_bin();
+            memory.write_io(JOYP, dpad);
+            self.dpad = dpad;
         }
-        memory.write(JOYP, input);
 
-        self.input = input;
+        if self.dpad != dpad {
+            println!("dpad: {dpad:#08b}");
+            Joypad::request_interrupt(memory);
+            self.dpad = dpad;
+        }
+
+        if self.buttons != buttons {
+            println!("buttons: {buttons:#08b}");
+            self.buttons = buttons;
+        }
+        
+
     }
 
     fn buttons_to_bin(&self) -> u8 {
-        let mut input = 0b0000_0000;
+        let mut input = 0b0001_0000;
         if !self.a { input += 0b1 }
         if !self.b { input += 0b10 }
         if !self.select { input += 0b100 }
@@ -77,12 +90,18 @@ impl Joypad {
     }
 
     fn dpad_to_bin(&self) -> u8 {
-        let mut input = 0b0000_0000;
+        let mut input = 0b0010_0000;
         if !self.right { input += 0b1 }
         if !self.left { input += 0b10 }
         if !self.up { input += 0b100 }
         if !self.down { input += 0b1000 }
         input
+    }
+
+    fn request_interrupt(memory: &mut Memory) {
+        let if_old = memory.read(IF);
+        let if_new = if_old | 0b1_0000 ;
+        memory.write(IF, if_new);
     }
 
 }

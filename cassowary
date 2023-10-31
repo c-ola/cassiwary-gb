@@ -1,5 +1,6 @@
 #!/bin/bash
 
-cpu_instr_path="/home/nikola/programming/personal/cpu_instrs/individual/05-op rp.gb"
+rom_path=${1}
 
-cargo run path="${cpu_instr_path}"
+
+cargo run path="${rom_path}"

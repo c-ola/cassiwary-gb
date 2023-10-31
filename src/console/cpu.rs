@@ -109,7 +109,7 @@ impl SharpSM83 {
         match instr {
             ErrInstr{opcode} => {
                 match opcode {
-                    0xD3 | 0xE3 | 0xE4 | 0xF4 | 0xDB | 0xEB | 0xEC | 0xFC | 0xDD | 0xED | 0xFD => eprintln!("Instruction Undefined"),
+                    0xD3 | 0xE3 | 0xE4 | 0xF4 | 0xDB | 0xEB | 0xEC | 0xFC | 0xDD | 0xED | 0xFD => panic!("Instruction Undefined {opcode:#02X}"),
                     _ => panic!("Invalid Instruction {opcode:#010b}"),
                 }
             },
@@ -419,13 +419,14 @@ impl SharpSM83 {
 
             },
             INTn(nn) => {
+                self.ime = 0;
+                
                 self.sp = self.sp.overflowing_sub(1).0;
                 self.write(self.sp, high_u16(self.pc), memory);
                 self.sp = self.sp.overflowing_sub(1).0;
                 self.write(self.sp, low_u16(self.pc), memory);
 
                 self.pc = nn;
-                self.ime = 0;
             }
 
             _ => panic!("Instruction not matched {:?}", instr),

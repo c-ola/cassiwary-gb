@@ -73,23 +73,16 @@ impl GameBoy {
         }
     }
 
-    pub fn tick_cpu(&mut self) {
+    pub fn tick_cpu(&mut self) -> usize {
 
-        if !self.cpu.stop {
-
-            match self.cpu.run(&mut self.gamepack) {
-                Some(cycles) => {
-                    self.clock_acc = cycles;
-
-                },
-                None => panic!("something went wrong"), 
-            }
+        return match self.cpu.run(&mut self.gamepack) {
+            Some(cycles) => {
+                cycles
+            },
+            None => panic!("something went wrong"), 
         }
-
     }
-fn print_type_of<T>(_: &T) {
-    println!("{}", std::any::type_name::<T>())
-}
+
     pub fn run_emu(&mut self) -> Result<(), String>{
         let mut ppu = PPU::new();
 
@@ -120,10 +113,16 @@ fn print_type_of<T>(_: &T) {
 
         let mut prev_keys = HashSet::new();
         let mut render_timer = Instant::now();
-        let mut cpu_timer = Instant::now();
+        let mut clock_timer = Instant::now();
+        let mut clock_cycles = 0;
         let mut counter = 0;
+
+        let mut last_instr_cycles = 0;
+        let mut cycle_count_start = 0;
+        let mut last_ppu_line = 0;
+
         let instrs = -1;
-        
+
         let mut broken = false;
         let breakpoints = [
             //0x260, //flush wram 1
@@ -156,11 +155,14 @@ fn print_type_of<T>(_: &T) {
                 .pressed_scancodes()
                 .filter_map(Keycode::from_scancode)
                 .collect();
-            
+
             // Get the difference between the new and old sets.
             let new_keys = &keys - &prev_keys;
             let old_keys = &prev_keys - &keys;
-            
+
+            /*
+             * Debug Control
+             */
             if !broken {
                 for breakpoint in breakpoints {
                     if self.cpu.pc == breakpoint as u16 {
@@ -190,24 +192,41 @@ fn print_type_of<T>(_: &T) {
             }
 
 
+
+            /*
+             * Update
+             */
+            
             self.joypad.update(&mut self.gamepack, &keys);
-
             
-            if cpu_timer.elapsed() > Duration::new(0, 4194 / 4 as u32) {
-                self.clock = true;
-                self.timer.update(self.clock_acc, &mut self.gamepack);
-                cpu_timer = Instant::now();
-            } else {
-                self.clock = false;
-                self.clock_acc = 0;
+            // tick the cpu if the clock has ticked through all the cycles that the cpu
+            // theoretically took
+            if clock_cycles - cycle_count_start >= last_instr_cycles {
+                last_instr_cycles = self.tick_cpu();
+                cycle_count_start = clock_cycles;
+                //println!("{clock_cycles}, {last_instr_cycles}");
             }
 
-            
-            if self.clock && (!broken || new_keys.contains(&Keycode::Return)) {
-                self.tick_cpu();
-                ppu.update(self.clock_acc, &mut self.gamepack);
+            //self.timer.update(self.clock_acc, &mut self.gamepack);
+        
+            //executes a scan line every 456 dots 
+            if clock_cycles - last_ppu_line >= 456 {
+                ppu.update(&mut self.gamepack);
+                last_ppu_line = clock_cycles;
+                println!("{clock_cycles}");
             }
 
+            // tick the clock at 4.194 mhz
+            if clock_timer.elapsed() > Duration::new(0, 238 as u32) {
+                clock_cycles += 1;
+                clock_timer = Instant::now();
+            }
+
+
+
+            /*
+             * Actual Rendering
+             */
 
             if render_timer.elapsed() > Duration::new(0, (1_000_000_000. / 59.73) as u32){
                 ppu.render(&mut canvas, &mut texture)?;
@@ -217,6 +236,7 @@ fn print_type_of<T>(_: &T) {
 
                 render_timer = Instant::now();
             }
+
             prev_keys = keys;
         }
 

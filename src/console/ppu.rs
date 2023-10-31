@@ -191,23 +191,20 @@ impl PPU {
         pixels
     }
     
-    pub fn update(&mut self, clock_acc: usize, memory: &mut Memory){
+    pub fn update(&mut self, memory: &mut Memory){
         self.update_registers(memory);
         
         if !self.check_lcdc(BGWIN_EN) {
             //println!("here")
         }
-    
-        self.dots += clock_acc;
-        
-        if self.dots > 456 { 
-            if !self.check_lcdc(LCD_EN) {
-                //self.clear();
-                return
-            }
-            self.do_scan_line(memory);
+
+        if !self.check_lcdc(LCD_EN) {
+            self.clear();
+            return
         }
- 
+
+        self.do_scan_line(memory);
+
         self.set_registers(memory);
     }
 
@@ -216,16 +213,16 @@ impl PPU {
             self.fx = 0;
             for i in 0..20 {
                 let tile_index = self.get_tile(memory);
-                
+
 
                 let mut vram_bank = VB_0;
 
                 if self.lcdc & WIN_EN != 0 {
                     vram_bank = if self.lcdc & BGWIN_TILES != 0{
-                    VB_0
+                        VB_0
                     } else { VB_1 };
                 }
-                
+
                 let index_low = vram_bank + tile_index * 16 + (self.fy as u16 % 8) * 2;
                 let index_high = index_low + 1;
                 let low = memory.read(index_low);
@@ -246,7 +243,7 @@ impl PPU {
         if self.ly > 143 {
             self.request_interrupt(memory);
             self.mode = VBLANK;
-            //self.clear();
+            self.clear();
         }
         else {
             self.mode = 0;
@@ -265,11 +262,11 @@ impl PPU {
     }
 
     fn clear(&mut self) {
-        for i in 0..LCD_SIZE {
-            self.bg[i] == PALETTE[0];
+        for _i in 0..LCD_SIZE {
+            //self.bg[_i] = PALETTE[0];
         }
     }
-    
+
     fn check_lcdc(&self, mask: u8) -> bool {
         self.lcdc & mask != 0
     }
