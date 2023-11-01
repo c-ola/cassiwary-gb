@@ -194,11 +194,12 @@ impl PPU {
         let mut valid_objects = Vec::new();
 
         // 0 for 1 tile, 1 for 2 tiles
-        if !self.check_lcdc(OBJ_S) {
-
+        let range = if !self.check_lcdc(OBJ_S) {
+            8
         }else {
+            16
+        };
 
-        }
         let mut obj_counter = 0;
         for i in 0..40 {
             let addr = 0xFE00 + i * 4;
@@ -206,11 +207,11 @@ impl PPU {
             let x = memory.read(addr + 1);
             let tile_index = memory.read(addr + 2) as u16;
             let attributes = memory.read(addr + 3);
+
             //means the object is on the current scanline
-            // should be modified to include y + 8 if the obj size is 2 
-            if y == self.fy + 16 {
+            if y >= self.fy + 8 && y < self.fy + 8 + range {
                 
-                println!("OBJ: y: {y}, x: {x}, {attributes:#08b}");
+                //println!("OBJ: y: {y}, x: {x}, {attributes:#08b}");
                 valid_objects.push(addr);
 
                 obj_counter += 1;
@@ -275,22 +276,22 @@ impl PPU {
                         VB_0
                     } else { VB_1 };
                 }
+                {
+                    let index_low = vram_bank + tile_index * 16 + (self.fy as u16 % 8) * 2;
+                    let index_high = index_low + 1;
+                    let low = memory.read(index_low);
+                    let high = memory.read(index_high);
 
-                let index_low = vram_bank + tile_index * 16 + (self.fy as u16 % 8) * 2;
-                let index_high = index_low + 1;
-                let low = memory.read(index_low);
-                let high = memory.read(index_high);
-
-                let pixels = PPU::mix_bytes(low, high);
-                for p in 0..8 {
-                    self.bg_fifo.push_back(Pixel::new(pixels[p], 0, 0, 0));
+                    let pixels = PPU::mix_bytes(low, high);
+                    for p in 0..8 {
+                        self.bg_fifo.push_back(Pixel::new(pixels[p], 0, 0, 0));
+                    }
                 }
-                
 
                 for addr in &objects {
                     let y = memory.read(addr + 0);
                     let x = memory.read(addr + 1);
-                    if x / 8 == i {
+                    if x / 8 == i + 1 {
                         let obj_ti = memory.read(addr + 2) as u16;
                         let attributes = memory.read(addr + 3);
                         let index_low = VB_0 + obj_ti * 16 + (self.ly as u16 % 8) * 2;
@@ -298,13 +299,13 @@ impl PPU {
                         let low = memory.read(index_low);
                         let high = memory.read(index_high);
 
-                        let pixels = PPU::mix_bytes(low, high);
+                        let obj_pixels = PPU::mix_bytes(low, high);
                         for p in 0..8 {
-                            self.obj_fifo.push_back(Pixel::new(pixels[p], 0, 0, attributes & 0x80 >> 7));
+                            self.obj_fifo.push_back(Pixel::new(obj_pixels[(p + 1) % 8], 0, 0, attributes & 0x80 >> 7));
                         }
                     }
                 }
-            
+
                 self.internal_render(i as usize);
 
                 self.fx = self.fx + 1;

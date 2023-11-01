@@ -25,8 +25,11 @@ pub struct Joypad {
 impl Joypad {
 
     pub fn update(&mut self, memory: &mut Memory, keys: &HashSet<Keycode>) {
-        let sel_buttons = memory.read(JOYP) & 0b0010_0000 == 0;
-        let sel_dpad = memory.read(JOYP) & 0b0001_0000 == 0;
+
+        let joyp = memory.read(JOYP);
+        //println!("{joyp:#08b}");
+        let sel_buttons = joyp & 0b0010_0000 == 0;
+        let sel_dpad = joyp & 0b0001_0000 == 0;
         
         self.a = if keys.contains(&Keycode::X) {
             true
@@ -37,7 +40,7 @@ impl Joypad {
         self.select = if keys.contains(&Keycode::Return) {
             true
         } else { false };
-        self.start = if keys.contains(&Keycode::Tab) {
+        self.start = if keys.contains(&Keycode::Backspace) {
             true
         } else { false };
 
@@ -56,17 +59,19 @@ impl Joypad {
         
         let dpad = self.dpad_to_bin();
         let buttons = self.buttons_to_bin();
-
+        
+        let mut data = joyp & 0xF0;
         if sel_buttons {
-            memory.write_io(JOYP, buttons);
+            data += dpad;
             self.buttons = buttons;
         }
-        if sel_dpad {
-            memory.write_io(JOYP, dpad);
+        else if sel_dpad {
+            data += buttons;
             self.dpad = dpad;
         }
+        memory.write_io(JOYP, data);
 
-        if self.dpad != dpad {
+        /*if self.dpad != dpad {
             println!("dpad: {dpad:#08b}");
             Joypad::request_interrupt(memory);
             self.dpad = dpad;
@@ -75,13 +80,13 @@ impl Joypad {
         if self.buttons != buttons {
             println!("buttons: {buttons:#08b}");
             self.buttons = buttons;
-        }
+        }*/
         
 
     }
 
     fn buttons_to_bin(&self) -> u8 {
-        let mut input = 0b0001_0000;
+        let mut input = 0b0000_0000;
         if !self.a { input += 0b1 }
         if !self.b { input += 0b10 }
         if !self.select { input += 0b100 }
@@ -90,7 +95,7 @@ impl Joypad {
     }
 
     fn dpad_to_bin(&self) -> u8 {
-        let mut input = 0b0010_0000;
+        let mut input = 0b0000_0000;
         if !self.right { input += 0b1 }
         if !self.left { input += 0b10 }
         if !self.up { input += 0b100 }
