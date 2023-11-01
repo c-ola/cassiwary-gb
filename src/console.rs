@@ -113,13 +113,15 @@ impl GameBoy {
 
         let mut prev_keys = HashSet::new();
         let mut render_timer = Instant::now();
+        let mut cpu_time = Instant::now();
+        let mut ppu_time = Instant::now();
+        let mut clock_time = Instant::now();
         let mut clock_timer = Instant::now();
         let mut clock_cycles = 0;
+        let mut cpu_cycles = 0;
         let mut counter = 0;
 
-        let mut last_instr_cycles = 0;
-        let mut cycle_count_start = 0;
-        let mut last_ppu_line = 0;
+        let cpu_dur = Duration::from_nanos(238);
 
         let instrs = -1;
 
@@ -175,13 +177,13 @@ impl GameBoy {
             }
 
             if new_keys.contains(&Keycode::P) {
-                self.cpu.print();
+                //self.cpu.print();
             }
             if new_keys.contains(&Keycode::S) {
-                self.gamepack.print(self.cpu.get_reg_view(SP) - 0xF, 3)
+                //self.gamepack.print(self.cpu.get_reg_view(SP) - 0xF, 3)
             }
             if new_keys.contains(&Keycode::H) {
-                self.gamepack.print(self.cpu.get_reg_view(HL) - 0xF, 3)
+                //self.gamepack.print(self.cpu.get_reg_view(HL) - 0xF, 3)
             }
             if broken && new_keys.contains(&Keycode::Return) {
                 //broken = false;
@@ -192,43 +194,33 @@ impl GameBoy {
             }
 
 
-
             /*
              * Update
              */
-            
-            self.joypad.update(&mut self.gamepack, &keys);
-            
-            // tick the cpu if the clock has ticked through all the cycles that the cpu
-            // theoretically took
-            if clock_cycles - cycle_count_start >= last_instr_cycles {
-                last_instr_cycles = self.tick_cpu();
-                cycle_count_start = clock_cycles;
-                //println!("{clock_cycles}, {last_instr_cycles}");
+             
+            if  cpu_cycles as i64 - clock_cycles as i64 <= 0 {
+                self.joypad.update(&mut self.gamepack, &keys);
+                cpu_cycles += self.tick_cpu();
             }
-
-            //self.timer.update(self.clock_acc, &mut self.gamepack);
         
-            //executes a scan line every 456 dots 
-            if clock_cycles - last_ppu_line >= 456 {
+            if clock_cycles % 128 == 0 {
                 ppu.update(&mut self.gamepack);
-                last_ppu_line = clock_cycles;
-                println!("{clock_cycles}");
             }
 
             // tick the clock at 4.194 mhz
-            if clock_timer.elapsed() > Duration::new(0, 238 as u32) {
+            if clock_timer.elapsed() > cpu_dur {
+
+                self.timer.update(self.clock_acc, &mut self.gamepack);
                 clock_cycles += 1;
                 clock_timer = Instant::now();
             }
-
 
 
             /*
              * Actual Rendering
              */
 
-            if render_timer.elapsed() > Duration::new(0, (1_000_000_000. / 59.73) as u32){
+            if render_timer.elapsed() > Duration::from_micros(16670){
                 ppu.render(&mut canvas, &mut texture)?;
 
                 canvas.copy(&texture, None, Some(Rect::new(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT)))?;
@@ -250,6 +242,7 @@ impl GameBoy {
             self.gamepack.print(0, 16);
             self.cpu.print();
         }   
+        println!("Instructions executed: {}", self.cpu.get_instr_executed());
     }
 
     pub fn load_memory(&mut self, data: &[u8]) {

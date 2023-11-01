@@ -3,4 +3,4 @@
 rom_path=${1}
 
 
-cargo run path="${rom_path}"
+cargo run path="${rom_path}" verbose=true

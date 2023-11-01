@@ -32,6 +32,8 @@ pub struct SharpSM83 {
 
     pub stop: bool,
     pub halt: bool,
+            
+    instructions_executed: usize,
 
 }
 
@@ -58,6 +60,8 @@ impl SharpSM83 {
             stop: false,
             halt: false,
 
+            instructions_executed: 0,
+
         }
     }
     
@@ -73,10 +77,15 @@ impl SharpSM83 {
                 let opcode = self.fetch(memory);
                 let instr = Instruction::decode(opcode);
                 self.execute(instr, memory);
+                self.instructions_executed += 1;
             }
-            return Some(4)
+            return Some(1)
         }
         Some(0)
+    }
+    
+    pub fn get_instr_executed(&self) -> usize {
+        self.instructions_executed
     }
 
     pub fn raw_run(&mut self, memory: &mut Memory) {
