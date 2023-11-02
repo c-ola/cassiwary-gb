@@ -25,11 +25,6 @@ pub struct Joypad {
 impl Joypad {
 
     pub fn update(&mut self, memory: &mut Memory, keys: &HashSet<Keycode>) {
-
-        let joyp = memory.read(JOYP);
-        //println!("{joyp:#08b}");
-        let sel_buttons = joyp & 0b0010_0000 == 0;
-        let sel_dpad = joyp & 0b0001_0000 == 0;
         
         self.a = if keys.contains(&Keycode::X) {
             true
@@ -37,10 +32,10 @@ impl Joypad {
         self.b = if keys.contains(&Keycode::Z) {
             true
         } else { false };
-        self.select = if keys.contains(&Keycode::Return) {
+        self.select = if keys.contains(&Keycode::Backspace) {
             true
         } else { false };
-        self.start = if keys.contains(&Keycode::Backspace) {
+        self.start = if keys.contains(&Keycode::Return) {
             true
         } else { false };
 
@@ -57,18 +52,22 @@ impl Joypad {
             true
         } else { false };   
         
-        let dpad = self.dpad_to_bin();
-        let buttons = self.buttons_to_bin();
+
+        let joyp = memory.read(JOYP);
+        let sel_buttons = joyp & 0b0010_0000 == 0;
+        let sel_dpad = joyp & 0b0001_0000 == 0;
+        
+        self.dpad = self.dpad_to_bin();
+        self.buttons = self.buttons_to_bin();
         
         let mut data = joyp & 0xF0;
         if sel_buttons {
-            data += dpad;
-            self.buttons = buttons;
+            data += self.buttons;
         }
         else if sel_dpad {
-            data += buttons;
-            self.dpad = dpad;
+            data += self.dpad;
         }
+        Joypad::request_interrupt(memory);
         memory.write_io(JOYP, data);
 
         /*if self.dpad != dpad {

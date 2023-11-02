@@ -9,6 +9,7 @@ repository = "https://github.com/c-ola/cassowary-gb"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+rayon = "1.8.0"
 sdl2 = "0.35.2"
 
 [profile.dev]

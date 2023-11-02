@@ -100,8 +100,12 @@ impl GameBoy {
 
         let texture_creator = canvas.texture_creator();
 
-        let mut texture = texture_creator
+        /*let mut texture = texture_creator
             .create_texture_target(PixelFormatEnum::RGBA8888, 160, 144)
+            .map_err(|e| e.to_string())?;*/
+
+        let mut texture = texture_creator
+            .create_texture_streaming(PixelFormatEnum::RGBA8888, LCD_WIDTH as u32, LCD_HEIGHT as u32)
             .map_err(|e| e.to_string())?;
 
         canvas.clear();
@@ -111,12 +115,13 @@ impl GameBoy {
 
         let mut event_pump = sdl_context.event_pump().unwrap();
 
-        let mut prev_keys = HashSet::new();
         let mut render_timer = Instant::now();
         let mut cpu_time = Instant::now();
         let mut ppu_time = Instant::now();
         let mut clock_time = Instant::now();
         let mut clock_timer = Instant::now();
+        let mut log_timer = Instant::now();
+
         let mut clock_cycles = 0;
         let mut cpu_cycles = 0;
         let mut counter = 0;
@@ -151,21 +156,12 @@ impl GameBoy {
                 }
             }
 
-            // Create a set of pressed Keys.
-            let keys = event_pump
-                .keyboard_state()
-                .pressed_scancodes()
-                .filter_map(Keycode::from_scancode)
-                .collect();
 
-            // Get the difference between the new and old sets.
-            let new_keys = &keys - &prev_keys;
-            let old_keys = &prev_keys - &keys;
 
             /*
              * Debug Control
              */
-            if !broken {
+           /* if !broken {
                 for breakpoint in breakpoints {
                     if self.cpu.pc == breakpoint as u16 {
                         println!("reached breakpoint, {breakpoint:#04X}");
@@ -191,7 +187,7 @@ impl GameBoy {
 
             if counter == instrs {
                 break 'running
-            }
+            }*/
 
 
             /*
@@ -199,7 +195,6 @@ impl GameBoy {
              */
              
             if  cpu_cycles as i64 - clock_cycles as i64 <= 0 {
-                self.joypad.update(&mut self.gamepack, &keys);
                 cpu_cycles += self.tick_cpu();
             }
         
@@ -209,6 +204,14 @@ impl GameBoy {
 
             // tick the clock at 4.194 mhz
             if clock_timer.elapsed() > cpu_dur {
+            // Create a set of pressed Keys.
+            let keys = event_pump
+                .keyboard_state()
+                .pressed_scancodes()
+                .filter_map(Keycode::from_scancode)
+                .collect();
+
+            self.joypad.update(&mut self.gamepack, &keys); 
 
                 self.timer.update(self.clock_acc, &mut self.gamepack);
                 clock_cycles += 1;
@@ -223,13 +226,12 @@ impl GameBoy {
             if render_timer.elapsed() > Duration::from_micros(16670){
                 ppu.render(&mut canvas, &mut texture)?;
 
-                canvas.copy(&texture, None, Some(Rect::new(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT)))?;
+                canvas.copy(&texture, None, None)?;
                 canvas.present();
 
                 render_timer = Instant::now();
             }
 
-            prev_keys = keys;
         }
 
         self.stop();

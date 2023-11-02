@@ -4,6 +4,7 @@ use super::regids::IF;
 
 use sdl2::pixels::Color;
 use sdl2::render::{Texture, Canvas};
+use sdl2::surface::Surface;
 use sdl2::video::Window;
 use sdl2::rect::Point;
 
@@ -51,13 +52,19 @@ const LYC_EQ_LY: u8 = 1 << 2;
 const PPU_MODE: u8 = 0b11;
 
 
-const PALETTE: [Color; 4] = [
+/*const PALETTE: [Color; 4] = [
     Color::RGB(0xe0, 0xf8, 0xd0), 
     Color::RGB(0x88, 0xc0, 0x70), 
     Color::RGB(0x34, 0x68, 0x56), 
     Color::RGB(0x08, 0x18, 0x20), 
-];
+];*/
 
+const PALETTE: [[u8; 4]; 4] = [
+    [0xE0, 0xF8, 0xD0, 0xFF],
+    [0x88, 0xC0, 0x70, 0xFF],
+    [0x34, 0x68, 0x56, 0xFF],
+    [0x08, 0x18, 0x20, 0xFF],
+];
 
 //https://gbdev.io/pandocs/pixel_fifo.html
 #[derive(Debug)]
@@ -102,7 +109,7 @@ pub struct PPU {
 
     bg_fifo: VecDeque<Pixel>,
     obj_fifo: VecDeque<Pixel>,
-    bg: [Color; LCD_SIZE],
+    bg: [u8; LCD_SIZE * 4],
 
 }
 
@@ -129,7 +136,7 @@ impl PPU {
 
             bg_fifo: VecDeque::new(),
             obj_fifo: VecDeque::new(),
-            bg: [Color::RGBA(0x00, 0x00, 0x00, 0xFF); LCD_WIDTH * LCD_HEIGHT],
+            bg: [0x00; LCD_SIZE * 4],
         }
     }
 
@@ -301,8 +308,9 @@ impl PPU {
 
                         let obj_pixels = PPU::mix_bytes(low, high);
                         for p in 0..8 {
-                            self.obj_fifo.push_back(Pixel::new(obj_pixels[(p + 1) % 8], 0, 0, attributes & 0x80 >> 7));
+                            self.obj_fifo.push_back(Pixel::new(obj_pixels[p], 0, 0, attributes & 0x80 >> 7));
                         }
+                        println!("Start {:?}", self.obj_fifo.len());
                     }
                 }
 
@@ -323,7 +331,6 @@ impl PPU {
         }
 
         self.ly = (self.ly + 1) % 154;
-        self.dots = 0;
     }
 
     fn internal_render(&mut self, x: usize) {
@@ -334,8 +341,13 @@ impl PPU {
             let color = if obj_pixel.bg_prio == 1 {
                 pixel.color
             } else { obj_pixel.color };
+            
+            let index = (x * 8 + i + LCD_WIDTH * self.ly as usize) * 4;
+            self.bg[index] = PALETTE[color as usize][3];
+            self.bg[index + 1] = PALETTE[color as usize][2];
+            self.bg[index + 2] = PALETTE[color as usize][1];
+            self.bg[index + 3] = PALETTE[color as usize][0];
 
-            self.bg[x * 8 + i + LCD_WIDTH * self.ly as usize] = PALETTE[color as usize];
         }
     }
 
@@ -358,21 +370,9 @@ impl PPU {
 
     pub fn render(&mut self, canvas: &mut Canvas<Window>, texture: &mut Texture) -> Result<(), String> {
 
-        let _result = canvas.with_texture_canvas(texture, |texture_canvas|{
-
-            texture_canvas.set_draw_color(Color::BLACK);
-            texture_canvas.clear();
-            for i in 0..LCD_WIDTH * LCD_HEIGHT {
-                let x = i % LCD_WIDTH;
-                let y = i / LCD_WIDTH;
-                let color = self.bg[i];
-                texture_canvas.set_draw_color(color);
-                texture_canvas.draw_point(Point::new(x as i32, y as i32)).expect("cant draw point");
-            }
-
-        });
-
+        texture.update(None, &mut self.bg, LCD_WIDTH * 4).unwrap();
         Ok(())
+
     }
 
 

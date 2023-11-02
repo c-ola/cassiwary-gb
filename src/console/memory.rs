@@ -39,12 +39,13 @@ impl Memory {
 
         match addr {
             DMA => self.dma_transfer(byte),
-            JOYP => self.data[addr as usize] |= byte & 0xF0,
+            JOYP => {
+                //println!("{:#10b}", self.read(0xFF00));
+                self.data[addr as usize] = (byte & 0xF0) + (self.data[addr as usize] & 0x0F);
+            },
             _ => self.data[addr as usize] = byte,
 
         }
-
-        self.data[addr as usize] = byte;
     }
 
     pub fn write_io(&mut self, addr: u16, byte:u8) {
