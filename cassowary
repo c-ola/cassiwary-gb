@@ -1,5 +1,0 @@
-#!/bin/bash
-
-rom_path=${1}
-
-cargo run --release path="${rom_path}" verbose=true

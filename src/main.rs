@@ -5,26 +5,27 @@ pub mod bytes;
 
 use crate::console::*;
 
-use std::env;
+use clap::Parser;
 
-fn parse_arg(args: &[String], opt: &str) -> Option<String> {
-    for i in 0..args.len() {
-        if args[i].starts_with(&opt) {
-            let arg = args[i].split_at(opt.len() + 1).1;
-            return Some(String::from(arg));
-        }
-    }
-    None
+#[derive(Parser)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+
+    /// Write memory to a file at the end
+    #[arg(short='m', long)]
+    log_memory: bool,
+
+    /// Path of rom to run
+    #[arg(short='p', long, default_value = "")]
+    rom_path: std::path::PathBuf,
 }
 
 fn main() -> Result<(), String>{
-    let args: Vec<String> = env::args().collect();
-    let rom_path = parse_arg(&args, "path");
-    let verbose = parse_arg(&args, "verbose");
+    
+    let args = Args::parse();
 
-    let mut gb = GameBoy::new();
-    gb.set_verbose(verbose);
-    gb.load_rom(rom_path);
+    let mut gb = GameBoy::new(args.log_memory);
+    gb.load_rom(args.rom_path);
 
     gb.run_emu().unwrap();
 

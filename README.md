@@ -1,3 +1,17 @@
-cargo run
+## Arguments
 
-specify boot with ''path="path/to/binary''
+Log memory to a file 
+```sh
+--log-memory #-m
+```
+
+Path of rom to run with the emulator
+```sh
+--rom-path <PATH_TO_ROM> #-p
+```
+
+Help
+```sh
+--help #-h
+```
+

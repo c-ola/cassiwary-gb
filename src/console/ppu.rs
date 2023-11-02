@@ -295,7 +295,6 @@ impl PPU {
                         for p in 0..8 {
                             self.obj_fifo.push_back(Pixel::new(obj_pixels[p], 0, 0, attributes & 0x80 >> 7));
                         }
-                        println!("{}", x/8);
                     }
                 }
 
