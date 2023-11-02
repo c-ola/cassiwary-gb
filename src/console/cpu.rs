@@ -79,7 +79,7 @@ impl SharpSM83 {
                 self.execute(instr, memory);
                 self.instructions_executed += 1;
             }
-            return Some(1)
+            return Some(4)
         }
         Some(0)
     }

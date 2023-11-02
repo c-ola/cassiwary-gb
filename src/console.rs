@@ -91,7 +91,6 @@ impl GameBoy {
 
         let window = video_subsystem
             .window("Cassowary Gameboy", SCREEN_WIDTH, SCREEN_HEIGHT)
-            .opengl()
             .position_centered()
             .build()
             .map_err(|e| e.to_string())?;
@@ -118,9 +117,13 @@ impl GameBoy {
         let mut render_timer = Instant::now();
         let mut cpu_time = Instant::now();
         let mut ppu_time = Instant::now();
+        let mut draw_time = Instant::now();
+
         let mut clock_time = Instant::now();
         let mut clock_timer = Instant::now();
         let mut log_timer = Instant::now();
+        
+        let mut run_time = Instant::now();
 
         let mut clock_cycles = 0;
         let mut cpu_cycles = 0;
@@ -143,18 +146,12 @@ impl GameBoy {
             //0x2C7, // call state machine
             0x8000,
         ];
+        
+        let mut keys:HashSet<Keycode> = HashSet::new();
 
         'running: loop {
 
-            for event in event_pump.poll_iter() {
-                match event {
-                    Event::Quit {..} |
-                        Event::KeyDown { keycode: Some(Keycode::Escape), .. } => {
-                            break 'running
-                        },
-                    _ => {}
-                }
-            }
+
 
 
 
@@ -194,26 +191,25 @@ impl GameBoy {
              * Update
              */
              
-            if  cpu_cycles as i64 - clock_cycles as i64 <= 0 {
-                cpu_cycles += self.tick_cpu();
-            }
-        
-            if clock_cycles % 128 == 0 {
-                ppu.update(&mut self.gamepack);
-            }
+            /*
+             * Only update input certain times per second to not massively slow down code
+             *
+             */
 
             // tick the clock at 4.194 mhz
-            if clock_timer.elapsed() > cpu_dur {
-            // Create a set of pressed Keys.
-            let keys = event_pump
-                .keyboard_state()
-                .pressed_scancodes()
-                .filter_map(Keycode::from_scancode)
-                .collect();
+            if clock_timer.elapsed() > cpu_dur { 
+                if cpu_cycles - clock_cycles == 0 {
+                    cpu_cycles += self.tick_cpu();
+                }
 
-            self.joypad.update(&mut self.gamepack, &keys); 
+                if clock_cycles % 456 == 0 {
+                    ppu.update(&mut self.gamepack);
+                }
+                // Create a set of pressed Keys.
+                self.joypad.update(&mut self.gamepack, &keys); 
 
                 self.timer.update(self.clock_acc, &mut self.gamepack);
+
                 clock_cycles += 1;
                 clock_timer = Instant::now();
             }
@@ -222,14 +218,36 @@ impl GameBoy {
             /*
              * Actual Rendering
              */
+            if render_timer.elapsed() > Duration::from_micros(16670){   
 
-            if render_timer.elapsed() > Duration::from_micros(16670){
+                for event in event_pump.poll_iter() {
+                    match event {
+                        Event::Quit {..} |
+                            Event::KeyDown { keycode: Some(Keycode::Escape), .. } => {
+                                break 'running
+                            },
+                        _ => {}
+                    }
+                }
+
+                keys = event_pump
+                    .keyboard_state()
+                    .pressed_scancodes()
+                    .filter_map(Keycode::from_scancode)
+                    .collect();
+
                 ppu.render(&mut canvas, &mut texture)?;
 
                 canvas.copy(&texture, None, None)?;
                 canvas.present();
 
                 render_timer = Instant::now();
+            }
+
+
+
+            if run_time.elapsed() > Duration::from_secs(1){
+                // break 'running
             }
 
         }
