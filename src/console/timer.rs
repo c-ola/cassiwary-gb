@@ -44,10 +44,9 @@ impl HTimer {
         memory.write(TAC, self.tac);
     }
 
-    pub fn update(&mut self, clock_acc: usize, memory: &mut Memory){
+    pub fn update(&mut self, memory: &mut Memory){
         self.get_registers(memory);
-        self.div_dots += clock_acc;
-        self.tima_dots += clock_acc;
+
         
         if self.div_dots > DIV_SPEED {
             self.div();
@@ -61,7 +60,10 @@ impl HTimer {
             }
             self.tima_dots = 0;
         }   
-
+        
+        self.div_dots += 1;
+        self.tima_dots += 1;
+        
         self.set_registers(memory);
     }
 

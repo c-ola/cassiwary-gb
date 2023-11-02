@@ -34,11 +34,8 @@ const SCREEN_HEIGHT: u32 = LCD_HEIGHT as u32 * 4;
 
 pub struct GameBoy {
     cpu: SharpSM83,
-    clock_acc: usize,
-    clock: bool,
 
     pub gamepack: Memory,
-    rom_path: String,
     verbose: bool,
     timer: HTimer,
     joypad: Joypad
@@ -49,12 +46,8 @@ impl GameBoy {
     pub fn new() -> GameBoy {
         let memory = Memory::new(8 * KBYTE);
         GameBoy {
-            clock_acc: 0,
-            clock: false,
-
             gamepack: memory,
             cpu: SharpSM83::new(),
-            rom_path: String::new(),
             verbose: false,
             timer: HTimer::new(),
             joypad: Joypad::default(),
@@ -115,11 +108,7 @@ impl GameBoy {
         let mut event_pump = sdl_context.event_pump().unwrap();
 
         let mut render_timer = Instant::now();
-        let mut cpu_time = Instant::now();
-        let mut ppu_time = Instant::now();
-        let mut draw_time = Instant::now();
 
-        let mut clock_time = Instant::now();
         let mut clock_timer = Instant::now();
         let mut log_timer = Instant::now();
         
@@ -208,7 +197,7 @@ impl GameBoy {
                 // Create a set of pressed Keys.
                 self.joypad.update(&mut self.gamepack, &keys); 
 
-                self.timer.update(self.clock_acc, &mut self.gamepack);
+                self.timer.update(&mut self.gamepack);
 
                 clock_cycles += 1;
                 clock_timer = Instant::now();
@@ -217,6 +206,7 @@ impl GameBoy {
 
             /*
              * Actual Rendering
+             * Event polling is done here to speed up the reset of the code 
              */
             if render_timer.elapsed() > Duration::from_micros(16670){   
 
@@ -236,7 +226,7 @@ impl GameBoy {
                     .filter_map(Keycode::from_scancode)
                     .collect();
 
-                ppu.render(&mut canvas, &mut texture)?;
+                ppu.render(&mut texture)?;
 
                 canvas.copy(&texture, None, None)?;
                 canvas.present();
