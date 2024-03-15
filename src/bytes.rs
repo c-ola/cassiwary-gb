@@ -22,11 +22,11 @@ pub fn low_u16(x: u16) -> u8 {
 }
 
 pub fn high_u8(x: u8) -> u8 {
-    (x >> 4) as u8
+    x >> 4
 }
 
 pub fn low_u8(x: u8) -> u8 {
-    x - (high_u8(x) << 4)
+    x & 0x0F
 }
 
 pub fn has_bit_u8(n: u8, i: u8) -> bool {

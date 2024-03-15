@@ -72,7 +72,7 @@ fn load_16bit() {
         vec![0xF8, 0x05], // ld hl, sp + e
         vec![0xE5], // push hl
         vec![0xC1], // pop hl
-        vec![0x08, 0x00, 0xFF], // ld (nn) sp
+        vec![0x08, 0x00, 0xFE], // ld (nn) sp
         vec![0x00],
     ];
     
@@ -98,8 +98,8 @@ fn load_16bit() {
     assert_eq!(cpu.get_reg_view(SP), 0xFF07);
     assert_eq!(memory.read(cpu.get_reg_view(SP)), 0x00);
     cpu.raw_run(&mut memory);
-    assert_eq!(memory.read(0xFF00), 0x07);
-    assert_eq!(memory.read(0xFF01), 0xFF);
+    assert_eq!(memory.read(0xFE00), 0x07);
+    assert_eq!(memory.read(0xFE01), 0xFF);
     cpu.raw_run(&mut memory);
 }
 

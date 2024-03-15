@@ -180,7 +180,6 @@ impl PPU {
         let tma = if self.check_lcdc(WIN_TM) && in_window {
             win_tma
         } else { bg_tma };
-
         self.fx = (self.fx + self.scx / 8) & 0x1F;
         self.fy = (self.ly.overflowing_add(self.scy).0) & 0xFF;
 
@@ -262,7 +261,18 @@ impl PPU {
 
         self.set_registers(memory);
     }
+    
 
+    /*
+     *
+     * Modify scan line to go pixel by pixel, this means that mixing bytes will have to be changed
+     * A way to index 2 bits from bytes will be needed
+     * for x in scanlineLength:
+     *  fx = x + scx / 8
+     *  fy = y + scy
+     *
+     *  etc
+     */
     fn do_scan_line(&mut self, memory: &mut Memory) {
         //println!("{}", self.ly);
         if self.ly <= 143 {
@@ -273,30 +283,6 @@ impl PPU {
 
             //render each tile
             for i in 0..20 {
-
-                for addr in &objects {
-                    //let y = memory.read(addr + 0);
-                    let mut x = memory.read(addr + 1);
-
-                    // this is dumb and most likely shouldn't work
-                    if objects.len() != 1 {
-                        x += 8; 
-                    }
-
-                    if x / 8 == i + 1 {
-                        let obj_ti = memory.read(addr + 2) as u16;
-                        let attributes = memory.read(addr + 3);
-                        let index_low = VB_0 + obj_ti * 16 + (self.fy as u16 % 8) * 2;
-                        let index_high = index_low + 1;
-                        let low = memory.read(index_low);
-                        let high = memory.read(index_high);
-
-                        let obj_pixels = PPU::mix_bytes(low, high);
-                        for p in 0..8 {
-                            self.obj_fifo.push_back(Pixel::new(obj_pixels[p], 0, 0, attributes & 0x80 >> 7));
-                        }
-                    }
-                }
 
 
                 let tile_index = self.get_tile(memory);
@@ -319,7 +305,26 @@ impl PPU {
                         self.bg_fifo.push_back(Pixel::new(pixels[p], 0, 0, 0));
                     }
                 }
-    
+                    for addr in &objects {
+                    //let y = memory.read(addr + 0);
+                    let mut x = memory.read(addr + 1);
+
+                    if x / 8 == i {
+                        let obj_ti = memory.read(addr + 2) as u16;
+                        let attributes = memory.read(addr + 3);
+                        let index_low = VB_0 + obj_ti * 16 + (self.fy as u16 % 8) * 2;
+                        let index_high = index_low + 1;
+                        let low = memory.read(index_low);
+                        let high = memory.read(index_high);
+
+                        let obj_pixels = PPU::mix_bytes(low, high);
+                        for p in 0..8 {
+                            self.obj_fifo.push_back(Pixel::new(obj_pixels[p], 0, 0, attributes & 0x80 >> 7));
+                        }
+                    }
+                }
+
+
                 self.internal_render(i as usize);
 
                 self.fx = self.fx + 1;

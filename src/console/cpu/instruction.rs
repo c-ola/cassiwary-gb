@@ -87,7 +87,6 @@ pub enum Instruction {
     /*
      * CPU Misc
      */
-
     NOP,
     HALT,
     STOP,

@@ -102,7 +102,7 @@ impl SharpSM83 {
 
         //eprintln!("fetched {0:#04X} at pc: {1:#04X}", opcode, self.pc);     
 
-        self.pc = u16_add(self.pc, 1).0;
+        self.pc = self.pc.overflowing_add(1).0;
 
         opcode
     }
@@ -188,9 +188,6 @@ impl SharpSM83 {
                 let msb = memory.read(self.sp);
                 self.sp += 1;
                 self.set_reg_view_int(rr, u8_to_u16(msb, lsb));
-                if rr == AF {
-                    self.f = memory.read(self.get_reg_view_int(AF));
-                }
             },
             LDHLwSP => {
                 let e = self.fetch(memory);
@@ -357,6 +354,7 @@ impl SharpSM83 {
                 let lsb = self.fetch(memory);
                 let msb = self.fetch(memory);
                 self.pc = u8_to_u16(msb, lsb);
+
             },
             JPHL => {
                 self.pc = self.get_reg_view(HL);
@@ -372,7 +370,7 @@ impl SharpSM83 {
             },
             JRe => {
                 let e = self.fetch(memory) as i8 as i16;
-                self.pc = self.pc.overflowing_add_signed(e).0;
+                self.pc = (self.pc as i16 + e) as u16;
             },
             JRcce(cc) => {
                 let e = self.fetch(memory) as i8 as i16;
@@ -729,7 +727,7 @@ impl SharpSM83 {
             H => self.h = n,
             L => self.l = n,
             A => self.a = n,
-            F => self.f = n,
+            F => self.f = n & 0xF0,
             _ => (),
         }
     }
