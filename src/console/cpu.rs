@@ -119,7 +119,7 @@ impl SharpSM83 {
             ErrInstr{opcode} => {
                 match opcode {
                     0xD3 | 0xE3 | 0xE4 | 0xF4 | 0xDB | 0xEB | 0xEC | 0xFC | 0xDD | 0xED | 0xFD => panic!("Instruction Undefined {opcode:#02X}"),
-                    _ => panic!("Invalid Instruction {opcode:#010b}"),
+                    _ => panic!("Invalid Instruction {opcode:#02X}"),
                 }
             },
             NOP => (),
