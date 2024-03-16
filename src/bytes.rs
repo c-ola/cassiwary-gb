@@ -41,8 +41,8 @@ pub fn make_flag(result: u8, n_flag: bool, half_c: bool, full_c: bool) -> u8 {
     let mut new_flag = 0u8;
     new_flag += if result == 0 { 0b1000_0000 } else { 0 };
     new_flag += if n_flag { 0b0100_0000 } else { 0 };
-    new_flag += if full_c { 0b0001_0000 } else { 0 };
     new_flag += if half_c { 0b0010_0000 }  else { 0 };
+    new_flag += if full_c { 0b0001_0000 } else { 0 };
     new_flag 
 }
 
@@ -86,10 +86,29 @@ pub fn u8_add(a: u8, b: u8) -> (u8, u8) {
     (result.0, flag)
 }
 
+pub fn u8_addc(a: u8, b: u8, c: u8) -> (u8, u8) {
+    let s1 = b.overflowing_add(c);
+
+    let result = a.overflowing_add(s1.0);
+    let half_c = (a & 0xF) + (b & 0xF) + c > 0xF;
+    let full_c = result.1 || s1.1;
+    let flag = make_flag(result.0, false, half_c, full_c);
+    (result.0, flag)
+}
+
 pub fn u8_sub(a: u8, b: u8) -> (u8, u8) {
     let result = a.overflowing_sub(b);
     let half_c = (b & 0xF) > (a & 0xF);
     let full_c = b > a;
+    let flag = make_flag(result.0, true, half_c, full_c);
+    (result.0, flag)
+}
+
+pub fn u8_subc(a: u8, b: u8, c: u8) -> (u8, u8) {
+    let s1 = b.overflowing_add(c);
+    let result = a.overflowing_sub(s1.0);
+    let half_c = (b & 0xF) + c > (a & 0xF);
+    let full_c = result.1 || s1.1;
     let flag = make_flag(result.0, true, half_c, full_c);
     (result.0, flag)
 }

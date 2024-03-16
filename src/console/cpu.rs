@@ -238,8 +238,8 @@ impl SharpSM83 {
                     Sub(_) | Subn => u8_sub(self.a, n),
                     And(_) | Andn => u8_and(self.a, n),
                     Or(_) | Orn => u8_or(self.a, n),
-                    Adc(_) | Adcn => u8_add(self.a, u8_add(n, self.f & 0b0001_0000 >> 4).0),
-                    Sbc(_) | Sbcn => u8_sub(self.a, u8_add(n, self.f & 0b0001_0000 >> 4).0),
+                    Adc(_) | Adcn => u8_addc(self.a, n, self.get_flag_bit(FLAG_C)),
+                    Sbc(_) | Sbcn => u8_subc(self.a, n, self.get_flag_bit(FLAG_C)),
                     Xor(_) | Xorn => u8_xor(self.a, n),
                     Cmp(_) | Cmpn => u8_cmp(self.a, n),
 
