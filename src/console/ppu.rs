@@ -215,7 +215,7 @@ impl PPU {
             //let attributes = memory.read(addr + 3);
 
             //means the object is on the current scanline
-            if y > self.fy + 8 && y <= self.fy + 8 + range {
+            if y > self.fy & 0xF + 8 && y <= self.fy & 0xF + 8 + range {
                 
                 //println!("OBJ: y: {y}, x: {x}, {attributes:#08b}");
                 valid_objects.push(addr);

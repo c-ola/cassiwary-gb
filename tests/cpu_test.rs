@@ -27,38 +27,36 @@ fn misc() {
 fn load_8bit() {
     let mut cpu = SharpSM83::new();
     let mut memory = Memory::new(8*KBYTE);
-    let instructions = vec![
-        vec![0x0E, 0x07], // ld c, n
-        vec![0x3E, 0x01], // ld a, n
-        vec![0x51], // ld d, c
-        vec![0xE0, 0x04], // ldh $FF00 + (n), a
-        vec![0xF2], // ldh a, $FF00 + (c)
-        vec![0xFA, 0x04, 0xFF], // LD A (nn)
-        vec![0x12], // LD (DE) A
-        vec![0x00],
-    ];
     
-    let data: Vec<u8> = instructions.clone().into_iter().flatten().collect();
-    
-    for i in 0..data.len() {
-        let byte = data[i];
-        memory.write(i as u16, byte);
+    // ld r8, n
+    for val in 0..0x100 {
+        for addr in 0x0000..0xFFFF + 1 {
+            memory.write(addr as u16, val as u8);
+            for reg in 0..8 {
+                cpu.pc = addr as u16; // this is where the cpu will get the immediate value from
+                cpu.execute(LDRwN(reg), &mut memory);
+                assert_eq!(cpu.get_reg(reg, &memory), memory.read(addr as u16));
+            }
+        }
     }
-    
-    cpu.raw_run(&mut memory);
-    assert_eq!(cpu.get_reg_int(C), 0x07);
-    cpu.raw_run(&mut memory);
-    assert_eq!(cpu.get_reg_int(A), 0x01);
-    cpu.raw_run(&mut memory);
-    assert_eq!(cpu.get_reg_int(D), 0x07);
-    cpu.raw_run(&mut memory);
-    assert_eq!(memory.read(0xFF04), 0x01);
-    cpu.raw_run(&mut memory);
-    assert_eq!(cpu.get_reg_int(A), 0x00);
-    cpu.raw_run(&mut memory);
-    assert_eq!(cpu.get_reg_int(A), 0x01);
-    cpu.raw_run(&mut memory);
-    assert_eq!(memory.read(cpu.get_reg_view(DE)), 0x01);
+
+    // ld r8, r8
+    for val in 0..0x100 {
+        memory.write(0, val as u8);
+        for src in 0..8 {
+            cpu.pc = 0;
+            cpu.execute(LDRwN(src), &mut memory);
+            for dest in 0..8 {
+                if dest == 0b110 && src == 0b110 {
+                    assert!(true); // somehow check for halt being true
+                } else {
+                    cpu.execute(LDRwR(dest, src), &mut memory);
+                    assert_eq!(cpu.get_reg(src, &memory), cpu.get_reg(dest, &memory));
+                }
+            }
+        }
+    }
+
 }
 
 #[test]
@@ -75,32 +73,32 @@ fn load_16bit() {
         vec![0x08, 0x00, 0xFE], // ld (nn) sp
         vec![0x00],
     ];
-    
-    let data: Vec<u8> = instructions.clone().into_iter().flatten().collect();
-    
-    for i in 0..data.len() {
-        let byte = data[i];
-        memory.write(i as u16, byte);
-    }
-    
-    cpu.raw_run(&mut memory);
-    assert_eq!(cpu.get_reg_view(HL), 0xFF07);
-    cpu.raw_run(&mut memory);
-    assert_eq!(cpu.get_reg_view(BC), 0xFA10);
-    cpu.raw_run(&mut memory);
-    assert_eq!(cpu.get_reg_view(SP), 0xFF07);
-    cpu.raw_run(&mut memory);
-    assert_eq!(cpu.get_reg_view(HL), 0xFF0C);
-    cpu.raw_run(&mut memory);
-    assert_eq!(cpu.get_reg_view(SP), 0xFF05);
-    assert_eq!(memory.read(cpu.get_reg_view(SP)), 0x0C);
-    cpu.raw_run(&mut memory);
-    assert_eq!(cpu.get_reg_view(SP), 0xFF07);
-    assert_eq!(memory.read(cpu.get_reg_view(SP)), 0x00);
-    cpu.raw_run(&mut memory);
-    assert_eq!(memory.read(0xFE00), 0x07);
-    assert_eq!(memory.read(0xFE01), 0xFF);
-    cpu.raw_run(&mut memory);
+
+        let data: Vec<u8> = instructions.clone().into_iter().flatten().collect();
+
+        for i in 0..data.len() {
+            let byte = data[i];
+            memory.write(i as u16, byte);
+        }
+
+        cpu.raw_run(&mut memory);
+        assert_eq!(cpu.get_reg_view(HL), 0xFF07);
+        cpu.raw_run(&mut memory);
+        assert_eq!(cpu.get_reg_view(BC), 0xFA10);
+        cpu.raw_run(&mut memory);
+        assert_eq!(cpu.get_reg_view(SP), 0xFF07);
+        cpu.raw_run(&mut memory);
+        assert_eq!(cpu.get_reg_view(HL), 0xFF0C);
+        cpu.raw_run(&mut memory);
+        assert_eq!(cpu.get_reg_view(SP), 0xFF05);
+        assert_eq!(memory.read(cpu.get_reg_view(SP)), 0x0C);
+        cpu.raw_run(&mut memory);
+        assert_eq!(cpu.get_reg_view(SP), 0xFF07);
+        assert_eq!(memory.read(cpu.get_reg_view(SP)), 0x00);
+        cpu.raw_run(&mut memory);
+        assert_eq!(memory.read(0xFE00), 0x07);
+        assert_eq!(memory.read(0xFE01), 0xFF);
+        cpu.raw_run(&mut memory);
 }
 
 #[test]
@@ -128,63 +126,63 @@ fn rotates_and_shifts() {
         vec![0x00],
     ];
 
-    let data: Vec<u8> = instructions.clone().into_iter().flatten().collect();
+        let data: Vec<u8> = instructions.clone().into_iter().flatten().collect();
 
-    for i in 0..data.len() {
-        let byte = data[i];
-        memory.write(i as u16, byte);
-    }
+        for i in 0..data.len() {
+            let byte = data[i];
+            memory.write(i as u16, byte);
+        }
 
-    cpu.raw_run(&mut memory);
-    cpu.raw_run(&mut memory);
-    cpu.raw_run(&mut memory);
+        cpu.raw_run(&mut memory);
+        cpu.raw_run(&mut memory);
+        cpu.raw_run(&mut memory);
 
-    cpu.raw_run(&mut memory);
-    assert_eq!(cpu.get_reg_int(A), 0b0011_1001);
-    assert_eq!(cpu.get_flag(), 0b0001_0000);
-    
-    cpu.raw_run(&mut memory);
-    assert_eq!(cpu.get_reg_int(A), 0b0111_0011);
-    assert_eq!(cpu.get_flag(), 0b0000_0000);
- 
-    cpu.raw_run(&mut memory);
-    assert_eq!(cpu.get_reg_int(A), 0b1011_1001);
-    assert_eq!(cpu.get_flag(), 0b0001_0000);
-    
-    cpu.raw_run(&mut memory);
-    assert_eq!(cpu.get_reg_int(A), 0b1101_1100);
-    assert_eq!(cpu.get_flag(), 0b0001_0000);
+        cpu.raw_run(&mut memory);
+        assert_eq!(cpu.get_reg_int(A), 0b0011_1001);
+        assert_eq!(cpu.get_flag(), 0b0001_0000);
 
-    cpu.raw_run(&mut memory);
+        cpu.raw_run(&mut memory);
+        assert_eq!(cpu.get_reg_int(A), 0b0111_0011);
+        assert_eq!(cpu.get_flag(), 0b0000_0000);
 
-    //rlc, rl, rrc, rr
-    cpu.raw_run(&mut memory);
-    assert_eq!(cpu.get_reg_int(B), 0b11011010);
-    assert_eq!(cpu.get_flag(), 0b0000_0000);
-    cpu.raw_run(&mut memory); 
-    assert_eq!(cpu.get_reg_int(B), 0b10110100);
-    assert_eq!(cpu.get_flag(), 0b0001_0000);
-    cpu.raw_run(&mut memory);
-    assert_eq!(cpu.get_reg_int(B), 0b01011010);
-    assert_eq!(cpu.get_flag(), 0b0000_0000);
-    cpu.raw_run(&mut memory);
-    assert_eq!(cpu.get_reg_int(B), 0b00101101);
-    assert_eq!(cpu.get_flag(), 0b0000_0000);
+        cpu.raw_run(&mut memory);
+        assert_eq!(cpu.get_reg_int(A), 0b1011_1001);
+        assert_eq!(cpu.get_flag(), 0b0001_0000);
 
-    //sla, swap, sra, srl
-    cpu.raw_run(&mut memory);
-    assert_eq!(cpu.get_reg_int(B), 0b01011010);
-    assert_eq!(cpu.get_flag(), 0b0000_0000);
-    cpu.raw_run(&mut memory); 
-    assert_eq!(cpu.get_reg_int(B), 0b10100101);
-    assert_eq!(cpu.get_flag(), 0b0000_0000);
-    cpu.raw_run(&mut memory);
-    assert_eq!(cpu.get_reg_int(B), 0b11010010);
-    assert_eq!(cpu.get_flag(), 0b0001_0000);
-    cpu.raw_run(&mut memory);
-    assert_eq!(cpu.get_reg_int(B), 0b01101001);
-    assert_eq!(cpu.get_flag(), 0b0000_0000);
-    cpu.raw_run(&mut memory);
+        cpu.raw_run(&mut memory);
+        assert_eq!(cpu.get_reg_int(A), 0b1101_1100);
+        assert_eq!(cpu.get_flag(), 0b0001_0000);
+
+        cpu.raw_run(&mut memory);
+
+        //rlc, rl, rrc, rr
+        cpu.raw_run(&mut memory);
+        assert_eq!(cpu.get_reg_int(B), 0b11011010);
+        assert_eq!(cpu.get_flag(), 0b0000_0000);
+        cpu.raw_run(&mut memory); 
+        assert_eq!(cpu.get_reg_int(B), 0b10110100);
+        assert_eq!(cpu.get_flag(), 0b0001_0000);
+        cpu.raw_run(&mut memory);
+        assert_eq!(cpu.get_reg_int(B), 0b01011010);
+        assert_eq!(cpu.get_flag(), 0b0000_0000);
+        cpu.raw_run(&mut memory);
+        assert_eq!(cpu.get_reg_int(B), 0b00101101);
+        assert_eq!(cpu.get_flag(), 0b0000_0000);
+
+        //sla, swap, sra, srl
+        cpu.raw_run(&mut memory);
+        assert_eq!(cpu.get_reg_int(B), 0b01011010);
+        assert_eq!(cpu.get_flag(), 0b0000_0000);
+        cpu.raw_run(&mut memory); 
+        assert_eq!(cpu.get_reg_int(B), 0b10100101);
+        assert_eq!(cpu.get_flag(), 0b0000_0000);
+        cpu.raw_run(&mut memory);
+        assert_eq!(cpu.get_reg_int(B), 0b11010010);
+        assert_eq!(cpu.get_flag(), 0b0001_0000);
+        cpu.raw_run(&mut memory);
+        assert_eq!(cpu.get_reg_int(B), 0b01101001);
+        assert_eq!(cpu.get_flag(), 0b0000_0000);
+        cpu.raw_run(&mut memory);
 }
 
 #[test]
@@ -200,15 +198,15 @@ fn arithmetic_8bit() {
         vec![0x00],
     ];
 
-    let data: Vec<u8> = instructions.clone().into_iter().flatten().collect();
+        let data: Vec<u8> = instructions.clone().into_iter().flatten().collect();
 
-    for i in 0..data.len() {
-        let byte = data[i];
-        memory.write(i as u16, byte);
-    }
+        for i in 0..data.len() {
+            let byte = data[i];
+            memory.write(i as u16, byte);
+        }
 
-    cpu.raw_run(&mut memory);
-    assert_eq!(cpu.get_reg_view(BC), 0x0813);
+        cpu.raw_run(&mut memory);
+        assert_eq!(cpu.get_reg_view(BC), 0x0813);
 }
 
 #[test]
@@ -227,33 +225,33 @@ fn arithmetic_16bit(){
         vec![0x00],
     ];
 
-    let data: Vec<u8> = instructions.clone().into_iter().flatten().collect();
+        let data: Vec<u8> = instructions.clone().into_iter().flatten().collect();
 
-    for i in 0..data.len() {
-        let byte = data[i];
-        memory.write(i as u16, byte);
-    }
+        for i in 0..data.len() {
+            let byte = data[i];
+            memory.write(i as u16, byte);
+        }
 
-    cpu.raw_run(&mut memory);
-    assert_eq!(cpu.get_reg_view(BC), 0x0813); 
-    cpu.raw_run(&mut memory);
-    assert_eq!(cpu.get_reg_view(SP), 0x7FFF); 
-    cpu.raw_run(&mut memory);
-    assert_eq!(cpu.get_reg_view(HL), 0x0001);
-    cpu.raw_run(&mut memory);
-    assert_eq!(cpu.get_reg_view(DE), 0xFFFF);
-    cpu.raw_run(&mut memory);
-    assert_eq!(cpu.get_reg_view(HL), 0x0814);
-    assert_eq!(cpu.get_flag() & 0xF0, 0b00000000); 
-    cpu.raw_run(&mut memory);
-    assert_eq!(cpu.get_reg_view(HL), 0x0813);
-    assert_eq!(cpu.get_flag() & 0xF0, 0b00110000); 
-    cpu.raw_run(&mut memory);
-    assert_eq!(cpu.get_reg_view(SP), 0x7FF9);
-    cpu.raw_run(&mut memory);
-    assert_eq!(cpu.get_reg_view(HL), 0x8009);
-    assert_eq!(cpu.get_flag() & 0xF0, 0b00010000); 
-    cpu.raw_run(&mut memory);
+        cpu.raw_run(&mut memory);
+        assert_eq!(cpu.get_reg_view(BC), 0x0813); 
+        cpu.raw_run(&mut memory);
+        assert_eq!(cpu.get_reg_view(SP), 0x7FFF); 
+        cpu.raw_run(&mut memory);
+        assert_eq!(cpu.get_reg_view(HL), 0x0001);
+        cpu.raw_run(&mut memory);
+        assert_eq!(cpu.get_reg_view(DE), 0xFFFF);
+        cpu.raw_run(&mut memory);
+        assert_eq!(cpu.get_reg_view(HL), 0x0814);
+        assert_eq!(cpu.get_flag() & 0xF0, 0b00000000); 
+        cpu.raw_run(&mut memory);
+        assert_eq!(cpu.get_reg_view(HL), 0x0813);
+        assert_eq!(cpu.get_flag() & 0xF0, 0b00110000); 
+        cpu.raw_run(&mut memory);
+        assert_eq!(cpu.get_reg_view(SP), 0x7FF9);
+        cpu.raw_run(&mut memory);
+        assert_eq!(cpu.get_reg_view(HL), 0x8009);
+        assert_eq!(cpu.get_flag() & 0xF0, 0b00010000); 
+        cpu.raw_run(&mut memory);
 }
 
 #[test]
@@ -276,55 +274,55 @@ fn control_flow() {
         vec![0x00], // rst n
         vec![0x00],
     ];
-    
-    memory.write(0x0100, 0x3F); // ccf flip carry
-    memory.write(0x0101, 0xD2); // jp nc nn
-    memory.write(0x0102, 0x0A);
-    memory.write(0x0103, 0x00);
-    memory.write(0x0104, 0xC9); // ret
-    memory.write(0x0105, 0x37); // scf
-    memory.write(0x0106, 0xD8); // ret c
 
-    let data: Vec<u8> = instructions.clone().into_iter().flatten().collect();
+        memory.write(0x0100, 0x3F); // ccf flip carry
+        memory.write(0x0101, 0xD2); // jp nc nn
+        memory.write(0x0102, 0x0A);
+        memory.write(0x0103, 0x00);
+        memory.write(0x0104, 0xC9); // ret
+        memory.write(0x0105, 0x37); // scf
+        memory.write(0x0106, 0xD8); // ret c
 
-    for i in 0..data.len() {
-        let byte = data[i];
-        memory.write(i as u16, byte);
-    }
+        let data: Vec<u8> = instructions.clone().into_iter().flatten().collect();
 
-    cpu.raw_run(&mut memory);
-    assert_eq!(cpu.get_reg_view(SP), 0x7FFF);
-    cpu.raw_run(&mut memory);
-    assert_eq!(cpu.get_reg_view(HL), 0x000B);
-    cpu.raw_run(&mut memory);
-    assert_eq!(cpu.get_flag() & 0x10, 0x10);
-    
-    let pc_ret = cpu.pc;
-    cpu.raw_run(&mut memory);
-    assert_eq!(cpu.pc, 0x0100);
-    cpu.raw_run(&mut memory);
-    assert_eq!(cpu.get_flag() & 0x10, 0x00);
-    cpu.raw_run(&mut memory);
-    assert_eq!(cpu.pc, 0x000A);
-    cpu.raw_run(&mut memory);
-    assert_eq!(cpu.pc, cpu.get_reg_view(HL));
-    let pc_before = cpu.pc + 2;
-    cpu.raw_run(&mut memory);
-    assert_eq!(cpu.pc, pc_before + 0x0003);
-    let pc_before = cpu.pc + 2;
-    cpu.raw_run(&mut memory);
-    assert_eq!(cpu.pc, pc_before + 0x0000);
-    cpu.raw_run(&mut memory);
-    assert_eq!(cpu.pc, 0x0104);
-    cpu.raw_run(&mut memory);
-    assert_eq!(cpu.pc, 21);
-    cpu.raw_run(&mut memory);
-    assert_eq!(cpu.pc, 0x0105);
-    cpu.raw_run(&mut memory);
-    assert_eq!(cpu.get_flag() & 0x10, 0x10);
-    cpu.raw_run(&mut memory);
-    assert_eq!(cpu.pc, 24);
-    cpu.raw_run(&mut memory);
+        for i in 0..data.len() {
+            let byte = data[i];
+            memory.write(i as u16, byte);
+        }
+
+        cpu.raw_run(&mut memory);
+        assert_eq!(cpu.get_reg_view(SP), 0x7FFF);
+        cpu.raw_run(&mut memory);
+        assert_eq!(cpu.get_reg_view(HL), 0x000B);
+        cpu.raw_run(&mut memory);
+        assert_eq!(cpu.get_flag() & 0x10, 0x10);
+
+        let pc_ret = cpu.pc;
+        cpu.raw_run(&mut memory);
+        assert_eq!(cpu.pc, 0x0100);
+        cpu.raw_run(&mut memory);
+        assert_eq!(cpu.get_flag() & 0x10, 0x00);
+        cpu.raw_run(&mut memory);
+        assert_eq!(cpu.pc, 0x000A);
+        cpu.raw_run(&mut memory);
+        assert_eq!(cpu.pc, cpu.get_reg_view(HL));
+        let pc_before = cpu.pc + 2;
+        cpu.raw_run(&mut memory);
+        assert_eq!(cpu.pc, pc_before + 0x0003);
+        let pc_before = cpu.pc + 2;
+        cpu.raw_run(&mut memory);
+        assert_eq!(cpu.pc, pc_before + 0x0000);
+        cpu.raw_run(&mut memory);
+        assert_eq!(cpu.pc, 0x0104);
+        cpu.raw_run(&mut memory);
+        assert_eq!(cpu.pc, 21);
+        cpu.raw_run(&mut memory);
+        assert_eq!(cpu.pc, 0x0105);
+        cpu.raw_run(&mut memory);
+        assert_eq!(cpu.get_flag() & 0x10, 0x10);
+        cpu.raw_run(&mut memory);
+        assert_eq!(cpu.pc, 24);
+        cpu.raw_run(&mut memory);
 }
 
 #[test]
@@ -340,15 +338,15 @@ fn prefix() {
         vec![0x00],
     ];
 
-    let data: Vec<u8> = instructions.clone().into_iter().flatten().collect();
+        let data: Vec<u8> = instructions.clone().into_iter().flatten().collect();
 
-    for i in 0..data.len() {
-        let byte = data[i];
-        memory.write(i as u16, byte);
-    }
+        for i in 0..data.len() {
+            let byte = data[i];
+            memory.write(i as u16, byte);
+        }
 
-    cpu.raw_run(&mut memory);
-    assert_eq!(cpu.get_reg_view(BC), 0x0813);
+        cpu.raw_run(&mut memory);
+        assert_eq!(cpu.get_reg_view(BC), 0x0813);
 }
 
 

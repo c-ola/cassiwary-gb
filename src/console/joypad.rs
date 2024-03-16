@@ -17,7 +17,6 @@ pub struct Joypad {
     up: bool,
     left: bool,
     right: bool,
-    
     buttons: u8,
     dpad: u8,
 }

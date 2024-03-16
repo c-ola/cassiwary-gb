@@ -14,7 +14,7 @@ use crate::joypad::*;
 use crate::regids::*;
 
 use std::time::{Instant, Duration};
-use std::cmp::min;
+use std::cmp::{min, max};
 use std::collections::HashSet;
 use std::fs::read;
 
@@ -37,7 +37,7 @@ pub struct GameBoy {
     pub gamepack: Memory,
     timer: HTimer,
     joypad: Joypad,
-
+    reset: bool,
     log_memory: bool,
 }
 
@@ -50,7 +50,7 @@ impl GameBoy {
             cpu: SharpSM83::new(),
             timer: HTimer::new(),
             joypad: Joypad::default(),
-            
+            reset: false,
             log_memory,
 
         }
@@ -104,8 +104,8 @@ impl GameBoy {
         
         let mut run_time = Instant::now();
 
-        let mut clock_cycles = 0;
-        let mut cpu_cycles = 0;
+        let mut clock_cycles: i32 = 0;
+        let mut cpu_cycles: i32 = 0;
         let mut counter = 0;
 
         let cpu_dur = Duration::from_nanos(238);
@@ -129,7 +129,6 @@ impl GameBoy {
         let mut keys:HashSet<Keycode> = HashSet::new();
 
         'running: loop {
-
 
 
 
@@ -165,11 +164,10 @@ impl GameBoy {
                 break 'running
             }*/
 
-
             /*
              * Update
              */
-             
+
             /*
              * Only update input certain times per second to not massively slow down code
              *
@@ -178,7 +176,7 @@ impl GameBoy {
             // tick the clock at 4.194 mhz
             if clock_timer.elapsed() > cpu_dur { 
                 if cpu_cycles - clock_cycles == 0 {
-                    cpu_cycles += self.tick_cpu();
+                    cpu_cycles += self.tick_cpu() as i32;
                 }
 
                 if clock_cycles % 456 == 0 {
@@ -199,7 +197,7 @@ impl GameBoy {
              * Event polling is done here to speed up the reset of the code 
              */
             if render_timer.elapsed() > Duration::from_micros(16670){   
-
+                //println!("{:#04X}", self.gamepack.read(0xffc5));
                 for event in event_pump.poll_iter() {
                     match event {
                         Event::Quit {..} |
@@ -289,7 +287,7 @@ impl GameBoy {
             Err(error) => match read(BOOT_ROM_PATH) {
                 Ok(buffer) => {
                     //load default boot rom
-                    for i in 0..min(0x8000, buffer.len()) {
+                    for i in 0..min(buffer.len(), 0x10000) {
                         self.gamepack.write(i as u16, buffer[i]);
                     }
 

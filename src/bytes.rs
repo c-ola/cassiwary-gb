@@ -37,7 +37,7 @@ pub fn has_bit_u16(n: u16, i: u16) -> bool {
     n & (0b1 >> i) != 0
 }
 
-pub fn make_flag(result: u8, half_c: bool, n_flag: bool, full_c: bool) -> u8 {
+pub fn make_flag(result: u8, n_flag: bool, half_c: bool, full_c: bool) -> u8 {
     let mut new_flag = 0u8;
     new_flag += if result == 0 { 0b1000_0000 } else { 0 };
     new_flag += if n_flag { 0b0100_0000 } else { 0 };
@@ -46,12 +46,12 @@ pub fn make_flag(result: u8, half_c: bool, n_flag: bool, full_c: bool) -> u8 {
     new_flag 
 }
 
-pub fn i16_add(a: i16, b: i16) -> (u16, bool, bool) {
+pub fn i16_add(a: i16, b: i16) -> (i16, bool, bool) {
     let result = a.overflowing_add(b);
     (
-        result.0 as u16, 
+        result.0, 
         result.1,
-        (a & 0xF) + (b & 0xF) > 0xF,
+        (a & 0xFFF) + (b & 0xFFF) > 0xFFF,
     )
 }
 
@@ -64,7 +64,7 @@ pub fn u16_add(a: u16, b: u16) -> (u16, bool, bool) {
     (
         result.0,
         result.1,
-        (a & 0xF) + (b & 0xF) > 0xF,
+        (a & 0xFFF) + (b & 0xFFF) > 0xFFF,
     )
 }
 
@@ -88,8 +88,8 @@ pub fn u8_add(a: u8, b: u8) -> (u8, u8) {
 
 pub fn u8_sub(a: u8, b: u8) -> (u8, u8) {
     let result = a.overflowing_sub(b);
-    let half_c = (a & 0xF) + (b & 0xF) > 0xF;
-    let full_c = result.1;
+    let half_c = (b & 0xF) > (a & 0xF);
+    let full_c = b > a;
     let flag = make_flag(result.0, true, half_c, full_c);
     (result.0, flag)
 }
