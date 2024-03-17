@@ -196,7 +196,6 @@ impl SharpSM83 {
             LDHLwSP => {
                 let e = self.fetch(memory);
                 let result = i16_add(self.get_reg_view(SP) as i16, e as i8 as i16);
-                println!("{}", result.0);
                 self.set_rr(HL, result.0 as u16);
                 self.set_flags(false, false, result.2, result.1);
             }
@@ -255,7 +254,8 @@ impl SharpSM83 {
                 let e = self.fetch(memory);
                 let result = i16_add(self.sp as i16, e as i8 as i16);
                 self.sp = result.0 as u16;
-                self.set_carry_flags(result.1, result.2);
+                self.set_flags(false, false, result.2, result.1);
+                //self.set_carry_flags(result.1, result.2);
             }
             INCrr(rr) | DECrr(rr) | ADDHLrr(rr) => {
                 let rrv = self.get_reg_view(rr);
@@ -319,7 +319,7 @@ impl SharpSM83 {
                 self.set_flags(self.get_flag_bit(FLAG_Z) == 1, false, false, !(self.get_flag_bit(FLAG_N) == 1));
             }
             CPL => {
-                self.a = (self.a ^ 0xFF).overflowing_add(1).0;
+                self.a = self.a ^ 0xFF;
                 self.set_flag(FLAG_N, true);
                 self.set_flag(FLAG_H, true);
             }

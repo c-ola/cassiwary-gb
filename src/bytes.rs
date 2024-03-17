@@ -50,8 +50,8 @@ pub fn i16_add(a: i16, b: i16) -> (i16, bool, bool) {
     let result = a.overflowing_add(b);
     (
         result.0, 
-        result.1,
-        (a & 0xFFF) + (b & 0xFFF) > 0xFFF,
+        (a & 0xFF) + (b & 0xFF) > 0xFF,
+        (a & 0xF) + (b & 0xF) > 0xF,
     )
 }
 
