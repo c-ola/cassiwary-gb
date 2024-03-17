@@ -65,6 +65,14 @@ impl SharpSM83 {
 
     //returns the number of clock cycles for the instruction
     pub fn run(&mut self, memory: &mut Memory) -> Option<usize> {
+        if self.halt && (memory.read(IE) & memory.read(IF) != 0) {
+            self.halt = false;
+        }
+
+        if self.stop && memory.read(0xFF00) & 0xF != 0xF {
+            self.stop = false;
+        }
+
         if !self.stop {
             let handled_interrupt = if self.ime == 1 {
                 self.handle_interrupt(memory)
@@ -80,7 +88,7 @@ impl SharpSM83 {
             }
             return Some(4);
         }
-        Some(0)
+        Some(4)
     }
     
 
@@ -99,11 +107,8 @@ impl SharpSM83 {
     fn fetch(&mut self, memory: &Memory) -> u8 {
         // ---- get instruction from memory  ----
         let opcode = memory.read(self.pc);
-
         //eprintln!("fetched {0:#04X} at pc: {1:#04X}", opcode, self.pc);
-
         self.pc = self.pc.overflowing_add(1).0;
-
         opcode
     }
 
@@ -113,7 +118,7 @@ impl SharpSM83 {
 
     /// Executes the specified instruction on the memory
     pub fn execute(&mut self, instr: Instruction, memory: &mut Memory) {
-        if instr != NOP && (self.pc < 700 || self.pc > 754) {
+        if instr != NOP {
             //eprintln!("{}, {instr:?}", self.pc);
         }
         match instr {
@@ -255,7 +260,6 @@ impl SharpSM83 {
                 let result = i16_add(self.sp as i16, e as i8 as i16);
                 self.sp = result.0 as u16;
                 self.set_flags(false, false, result.2, result.1);
-                //self.set_carry_flags(result.1, result.2);
             }
             INCrr(rr) | DECrr(rr) | ADDHLrr(rr) => {
                 let rrv = self.get_reg_view(rr);
@@ -360,9 +364,6 @@ impl SharpSM83 {
                 let msb = self.fetch(memory);
                 self.pc = u8_to_u16(msb, lsb);
             }
-            JPHL => {
-                self.pc = self.get_reg_view(HL);
-            }
             JPccnn(cc) => {
                 let lsb = self.fetch(memory);
                 let msb = self.fetch(memory);
@@ -372,14 +373,18 @@ impl SharpSM83 {
                     self.pc = nn;
                 }
             }
+            JPHL => {
+                self.pc = self.get_reg_view(HL);
+            }
+
             JRe => {
                 let e = self.fetch(memory) as i8 as i16;
-                self.pc = (self.pc as i16 + e) as u16;
+                self.pc = i16_add(self.pc as i16, e).0 as u16;
             }
             JRcce(cc) => {
                 let e = self.fetch(memory) as i8 as i16;
                 if self.check_conditions(cc) {
-                    self.pc = self.pc.overflowing_add_signed(e).0;
+                    self.pc = i16_add(self.pc as i16, e).0 as u16;
                 }
             }
             CALLnn | CALLccnn(_) => {
@@ -408,24 +413,30 @@ impl SharpSM83 {
 
                 self.pc = RST[n as usize] as u16;
             }
-            RET | RETcc(_) | RETI => {
-                let cc = match instr {
-                    RETcc(cc) => self.check_conditions(cc),
-                    _ => true,
-                };
-                if cc {
+            RET => {
+                let lsb = memory.read(self.sp);
+                self.sp = u16_add(self.sp, 1).0;
+                let msb = memory.read(self.sp);
+                self.sp = u16_add(self.sp, 1).0;
+                self.pc = u8_to_u16(msb, lsb);    
+            }
+            RETcc(cc) => {
+                if self.check_conditions(cc) {
+                    //println!("{cc:#010b}");
                     let lsb = memory.read(self.sp);
                     self.sp = u16_add(self.sp, 1).0;
                     let msb = memory.read(self.sp);
                     self.sp = u16_add(self.sp, 1).0;
-                    //println!("msb: {msb:#0X}, lsb: {lsb:#0X}");
-                    match instr {
-                        RETI => self.ime = 1,
-                        _ => (),
-                    }
-
-                    self.pc = u8_to_u16(msb, lsb);
+                    self.pc = u8_to_u16(msb, lsb);    
                 }
+            }
+            RETI => {
+                let lsb = memory.read(self.sp);
+                self.sp = u16_add(self.sp, 1).0;
+                let msb = memory.read(self.sp);
+                self.sp = u16_add(self.sp, 1).0;
+                self.ime = 1;
+                self.pc = u8_to_u16(msb, lsb);
             }
             INTn(nn) => {
                 self.ime = 0;
@@ -506,7 +517,6 @@ impl SharpSM83 {
     /// Handle Interrupts
     fn handle_interrupt(&mut self, memory: &mut Memory) -> bool {
         let (if_reg, ie_reg) = (memory.read(IF), memory.read(IE));
-
         if if_reg & 0b1 > 0 && ie_reg & 0b1 > 0 {
             //println!("VBlank interrupt");
             memory.write(IF, if_reg & 0b1111_1110);
@@ -556,7 +566,7 @@ impl SharpSM83 {
     /*
      * Flag functions
      */
-    
+
     pub fn get_flag_bit(&self, flag_bit: u8) -> u8 {
         let bit = 0b1 << flag_bit;
         (self.f & bit) >> flag_bit

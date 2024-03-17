@@ -18,6 +18,7 @@ Help
 ## Blarggs Tests
 Passed:
 - 01-special
+- 02-interrupts
 - 03-op sp, hl
 - 04-op r, imm
 - 05-op rp
@@ -29,5 +30,5 @@ Passed:
 
 
 Failed:
-- 02-interrupts : Timer dont work
-- 07-jumps : completely failed (jumped to narnia and got stuck somewhere probably), no LCD output
+- 07-jumps : just goes to narnia, STOPS, and then breaks when it gets resumed
+jr, jp, call, ret, rst, 

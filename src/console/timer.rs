@@ -5,7 +5,9 @@ const TIMA: u16 = 0xFF05;
 const TMA: u16 = 0xFF06;
 const TAC: u16 = 0xFF07;
 
-const CLOCK_SPEEDS: [usize; 4] = [1024, 16, 64, 256]; 
+//const CLOCK_SPEEDS: [usize; 4] = [1024, 16, 64, 256]; 
+//const CLOCK_SPEEDS: [usize; 4] = [4096, 262144, 65546, 16384]; 
+const CLOCK_SPEEDS: [usize; 4] = [256, 4, 16, 64]; 
 const DIV_SPEED: usize = 256; 
 
 pub struct HTimer {
@@ -46,15 +48,15 @@ impl HTimer {
 
     pub fn update(&mut self, memory: &mut Memory){
         self.get_registers(memory);
-
+        //println!("{}, {}, {}, {}", self.div, self.tima, self.tma, self.tac);
         
-        if self.div_dots > DIV_SPEED {
+        if self.div_dots >= DIV_SPEED {
             self.div();
             self.div_dots = 0;
         }         
 
         let clk_s = self.tac & 0b11;
-        if self.tima_dots > CLOCK_SPEEDS[clk_s as usize] {
+        if self.tima_dots >= CLOCK_SPEEDS[clk_s as usize] {
             if self.tima() {
                 HTimer::request_interrupt(2, memory);
             }
@@ -73,14 +75,17 @@ impl HTimer {
 
     fn tima(&mut self) -> bool {
         let tima_en = (self.tac & 0b100) != 0;
-
+        let mut result = false;
         if tima_en {
-            match self.tima.overflowing_add(1) {
-                (value, false) => self.tima = value,
-                (_, true) => self.tima = self.tma,
+            let sum = self.tima.overflowing_add(1);
+            if sum.1 {
+                self.tima = self.tma;
+                result = true;
+            } else {
+                self.tima = sum.0;
             }
-            true
-        }else {false}
+        }
+        result
     }
 
     fn request_interrupt(bit: u8, memory: &mut Memory) {

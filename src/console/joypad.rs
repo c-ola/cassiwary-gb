@@ -79,8 +79,6 @@ impl Joypad {
             println!("buttons: {buttons:#08b}");
             self.buttons = buttons;
         }*/
-        
-
     }
 
     fn buttons_to_bin(&self) -> u8 {
