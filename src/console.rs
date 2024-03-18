@@ -4,7 +4,7 @@ pub mod ppu;
 pub mod timer;
 pub mod joypad;
 pub mod regids;
-
+pub mod apu;
 
 use crate::ppu::*;
 use crate::cpu::*;
@@ -12,12 +12,16 @@ use crate::memory::*;
 use crate::timer::*;
 use crate::joypad::*;
 use crate::regids::*;
+use crate::apu::*;
 
+use std::ops::Deref;
 use std::time::{Instant, Duration};
 use std::cmp::{min, max};
 use std::collections::HashSet;
 use std::fs::read;
 
+use sdl2::audio::AudioCallback;
+use sdl2::audio::AudioSpecDesired;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::PixelFormatEnum;
@@ -35,6 +39,7 @@ const SCREEN_HEIGHT: u32 = LCD_HEIGHT as u32 * 4;
 pub struct GameBoy {
     cpu: SharpSM83,
     pub gamepack: Memory,
+    pub boot_rom: Memory,
     timer: HTimer,
     joypad: Joypad,
     reset: bool,
@@ -47,6 +52,7 @@ impl GameBoy {
         let memory = Memory::new(8 * KBYTE);
         GameBoy {
             gamepack: memory,
+            boot_rom: Memory::from_file(0xFF, BOOT_ROM_PATH),
             cpu: SharpSM83::new(),
             timer: HTimer::new(),
             joypad: Joypad::default(),
@@ -57,7 +63,6 @@ impl GameBoy {
     }
 
     pub fn tick_cpu(&mut self) -> usize {
-
         return match self.cpu.run(&mut self.gamepack) {
             Some(cycles) => {
                 cycles
@@ -94,6 +99,24 @@ impl GameBoy {
 
         canvas.copy(&texture, None, Some(Rect::new(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT)))?;
         canvas.present();
+        
+
+        // Audio
+        
+        let audio_subsystem = sdl_context.audio().unwrap();
+
+        let desired_spec = AudioSpecDesired {
+            freq: Some(44100),
+            channels: Some(1),  // mono
+            samples: None       // default sample size
+        };
+        let mut apu = Apu::new();
+
+        let mut device = audio_subsystem.open_playback(None, &desired_spec, |spec| {
+            // initialize the audio callback
+            apu.get_sound()
+        }).unwrap();
+        device.resume();
 
         let mut event_pump = sdl_context.event_pump().unwrap();
 
@@ -101,14 +124,14 @@ impl GameBoy {
 
         let mut clock_timer = Instant::now();
         let mut log_timer = Instant::now();
-        
+
         let mut run_time = Instant::now();
 
         let mut clock_cycles: i32 = 0;
         let mut cpu_cycles: i32 = 0;
         let mut counter = 0;
 
-        let cpu_dur = Duration::from_nanos(238);
+        let cpu_dur = Duration::from_nanos(238 / 4);
 
         let instrs = -1;
 
@@ -123,10 +146,13 @@ impl GameBoy {
             //0x2A3, // call Sound_Init
             //0x2C4, // main loop
             //0x2C7, // call state machine
-            0x8000,
+            0x1,
+            0x2,
+            0x30C9
         ];
-        
+
         let mut keys:HashSet<Keycode> = HashSet::new();
+        let mut old_keys:HashSet<Keycode> = HashSet::new();
 
         'running: loop {
 
@@ -136,33 +162,33 @@ impl GameBoy {
             /*
              * Debug Control
              */
-           /* if !broken {
-                for breakpoint in breakpoints {
-                    if self.cpu.pc == breakpoint as u16 {
-                        println!("reached breakpoint, {breakpoint:#04X}");
-                        broken = true;
-                        counter += 1;
-                        break;
-                    }
-                }
-            }
+            /*if !broken {
+              for breakpoint in breakpoints {
+              if self.cpu.pc == breakpoint as u16 {
+              println!("reached breakpoint, {breakpoint:#04X}");
+              broken = true;
+              counter += 1;
+              break;
+              }
+              }
+              }*/
 
-            if new_keys.contains(&Keycode::P) {
+            if keys.contains(&Keycode::P) {
                 //self.cpu.print();
             }
-            if new_keys.contains(&Keycode::S) {
+            if keys.contains(&Keycode::S) {
                 //self.gamepack.print(self.cpu.get_reg_view(SP) - 0xF, 3)
             }
-            if new_keys.contains(&Keycode::H) {
+            if keys.contains(&Keycode::H) {
                 //self.gamepack.print(self.cpu.get_reg_view(HL) - 0xF, 3)
             }
-            if broken && new_keys.contains(&Keycode::Return) {
-                //broken = false;
+            if broken && !old_keys.contains(&Keycode::Return) && keys.contains(&Keycode::Return){
+                broken = false;
             }
 
             if counter == instrs {
                 break 'running
-            }*/
+            }
 
             /*
              * Update
@@ -174,16 +200,35 @@ impl GameBoy {
              */
 
             // tick the clock at 4.194 mhz
-            if clock_timer.elapsed() > cpu_dur { 
-                if cpu_cycles - clock_cycles == 0 {
-                    cpu_cycles += self.tick_cpu() as i32;
+            if clock_timer.elapsed() > cpu_dur {
+                if self.gamepack.read(0xFF02) == 0x81 {
+                    let if_old = self.gamepack.read(IF);
+                    let if_new = if_old | 0b0_1000 ;
+                    self.gamepack.write(IF, if_new);
+                    self.gamepack.write_io(0xFF02, 0x01);
+                    print!("{}", self.gamepack.read(0xFF01) as char);
+                    //self.gamepack.write_io(0xFF01, 0xFF);
+                } else if self.gamepack.read(0xFF02) == 0x80 {
+                    //let if_old = self.gamepack.read(IF);
+                    //let if_new = if_old | 0b0_1000 ;
+                    //self.gamepack.write(IF, if_new);
+                    //self.gamepack.write_io(0xFF02, 0x00);
+                    //self.gamepack.write_io(0xFF01, 0x00);
+
                 }
 
-                if clock_cycles % 456 == 0 {
-                    ppu.update(&mut self.gamepack);
-                }
-                // Create a set of pressed Keys.
                 self.joypad.update(&mut self.gamepack, &keys); 
+                self.cpu.update(&mut self.gamepack);
+                if cpu_cycles - clock_cycles == 0 {
+                    counter += 1;
+                    cpu_cycles += self.tick_cpu() as i32;
+                }
+                //apu.update(&mut self.gamepack);
+                if clock_cycles % 456 == 0 {
+                    apu.update(&mut self.gamepack);
+                    ppu.update(&mut self.gamepack);
+
+                }
 
                 self.timer.update(&mut self.gamepack);
 
@@ -196,7 +241,12 @@ impl GameBoy {
              * Actual Rendering
              * Event polling is done here to speed up the reset of the code 
              */
-            if render_timer.elapsed() > Duration::from_micros(16670){   
+            if render_timer.elapsed() > Duration::from_micros(16670){
+                // Create a set of pressed Keys.
+                //println!("{:#010b}", self.gamepack.read(0xFF00));
+                let mut cb_guard = device.lock();
+                *cb_guard = apu.get_sound();
+                //apu.update(&mut self.gamepack);
                 //println!("{:#04X}", self.gamepack.read(0xffc5));
                 for event in event_pump.poll_iter() {
                     match event {
@@ -208,12 +258,12 @@ impl GameBoy {
                     }
                 }
 
+                old_keys = keys.clone();
                 keys = event_pump
                     .keyboard_state()
                     .pressed_scancodes()
                     .filter_map(Keycode::from_scancode)
                     .collect();
-
                 ppu.render(&mut texture)?;
 
                 canvas.copy(&texture, None, None)?;
@@ -221,6 +271,7 @@ impl GameBoy {
 
                 render_timer = Instant::now();
             }
+            device.resume();
 
 
 

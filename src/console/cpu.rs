@@ -11,6 +11,7 @@ use Instruction::*;
 
 use std::fmt;
 
+
 // the cpu
 pub struct SharpSM83 {
     // 8-bit general purpose
@@ -29,10 +30,11 @@ pub struct SharpSM83 {
     //16-bit special purpose
     pub pc: u16,
     sp: u16,
-
+    boot_rom: Memory,
+    rom_control: bool,
     pub stop: bool,
     pub halt: bool,
-
+    last_instr: Instruction,
     instructions_executed: usize,
 }
 
@@ -40,7 +42,9 @@ impl SharpSM83 {
     pub fn is_interruptible(&self) -> bool {
         self.ime == 1
     }
+
     pub fn new() -> SharpSM83 {
+
         SharpSM83 {
             a: 0x00,
             b: 0x00,
@@ -55,24 +59,30 @@ impl SharpSM83 {
 
             pc: 0x0000,
             sp: 0x0000,
+            last_instr: NOP,
 
             stop: false,
             halt: false,
+            boot_rom: Memory::from_file(0x100, BOOT_ROM_PATH),
+            rom_control: false,
 
             instructions_executed: 0,
+        }
+    }
+    
+    pub fn update(&mut self, memory: &mut Memory) {
+        //println!("{}", self.rom_control);
+        if self.halt && (self.read(IE, memory) & self.read(IF, memory) != 0) {
+            self.halt = false;
+        }
+
+        if self.stop && self.read(0xFF00, memory) & 0xF != 0xF {
+            self.stop = false;
         }
     }
 
     //returns the number of clock cycles for the instruction
     pub fn run(&mut self, memory: &mut Memory) -> Option<usize> {
-        if self.halt && (memory.read(IE) & memory.read(IF) != 0) {
-            self.halt = false;
-        }
-
-        if self.stop && memory.read(0xFF00) & 0xF != 0xF {
-            self.stop = false;
-        }
-
         if !self.stop {
             let handled_interrupt = if self.ime == 1 {
                 self.handle_interrupt(memory)
@@ -90,7 +100,7 @@ impl SharpSM83 {
         }
         Some(4)
     }
-    
+
 
     pub fn get_instr_executed(&self) -> usize {
         self.instructions_executed
@@ -105,8 +115,14 @@ impl SharpSM83 {
     }
 
     fn fetch(&mut self, memory: &Memory) -> u8 {
+
+        if self.pc == 0xFF && !self.rom_control {
+            self.rom_control = true;
+            self.print();
+            memory.print(0xFF00, 0xFFFF);
+        }
         // ---- get instruction from memory  ----
-        let opcode = memory.read(self.pc);
+        let opcode = self.read(self.pc, memory);
         //eprintln!("fetched {0:#04X} at pc: {1:#04X}", opcode, self.pc);
         self.pc = self.pc.overflowing_add(1).0;
         opcode
@@ -118,9 +134,13 @@ impl SharpSM83 {
 
     /// Executes the specified instruction on the memory
     pub fn execute(&mut self, instr: Instruction, memory: &mut Memory) {
-        if instr != NOP {
-            //eprintln!("{}, {instr:?}", self.pc);
+        if instr == NOP {
+            //eprintln!("{}, {instr:?}, {:?}", self.pc, self.last_instr);
         }
+        if instr == STOP {
+            println!("STOPPED");
+        }
+        self.last_instr = instr;
         match instr {
             ErrInstr { opcode } => match opcode {
                 0xD3 | 0xE3 | 0xE4 | 0xF4 | 0xDB | 0xEB | 0xEC | 0xFC | 0xDD | 0xED | 0xFD => {
@@ -145,10 +165,10 @@ impl SharpSM83 {
                         true => self.fetch(memory),
                         false => self.get_reg_int(C),
                     },
-                );
+                    );
                 match from {
                     true => memory.write(loc, self.get_reg_int(A)),
-                    false => self.set_reg_int(A, memory.read(loc)),
+                    false => self.set_reg_int(A, self.read(loc, memory)),
                 }
             }
             LDAwNNa(from) => {
@@ -156,7 +176,7 @@ impl SharpSM83 {
                 let msb = self.fetch(memory);
                 let loc = u8_to_u16(msb, lsb);
                 match from {
-                    false => self.set_reg(A, memory.read(loc), memory),
+                    false => self.set_reg(A, self.read(loc, memory), memory),
                     true => self.write(loc, self.get_reg_int(A), memory),
                 }
             }
@@ -166,7 +186,7 @@ impl SharpSM83 {
             }
             LDAwRRa(rr) => {
                 let loc = self.get_reg_view_addr(rr);
-                self.set_reg(A, memory.read(loc), memory);
+                self.set_reg(A, self.read(loc, memory), memory);
             }
             LDrrnn(rr) => {
                 let lsb = self.fetch(memory);
@@ -192,9 +212,9 @@ impl SharpSM83 {
                 self.write(self.sp, lsb, memory);
             }
             POPrr(rr) => {
-                let lsb = memory.read(self.sp);
+                let lsb = self.read(self.sp, memory);
                 self.sp += 1;
-                let msb = memory.read(self.sp);
+                let msb = self.read(self.sp, memory);
                 self.sp += 1;
                 self.set_reg_view_int(rr, u8_to_u16(msb, lsb));
             }
@@ -228,33 +248,33 @@ impl SharpSM83 {
                 self.set_flag(FLAG_H, half_c);
             }
             Add(_) | Sub(_) | And(_) | Or(_) | Adc(_) | Sbc(_) | Xor(_) | Cmp(_) | Addn | Subn
-            | Andn | Orn | Adcn | Sbcn | Xorn | Cmpn => {
-                let n = match instr {
-                    Addn | Subn | Andn | Orn | Adcn | Sbcn | Xorn | Cmpn => self.fetch(memory),
-                    Add(r) | Sub(r) | And(r) | Or(r) | Adc(r) | Sbc(r) | Xor(r) | Cmp(r) => {
-                        self.get_reg(r, memory)
-                    }
-                    _ => panic!("not supposed to get here"),
-                };
-                let result = match instr {
-                    //kinda yuck
-                    Add(_) | Addn => u8_add(self.a, n),
-                    Sub(_) | Subn => u8_sub(self.a, n),
-                    And(_) | Andn => u8_and(self.a, n),
-                    Or(_) | Orn => u8_or(self.a, n),
-                    Adc(_) | Adcn => u8_addc(self.a, n, self.get_flag_bit(FLAG_C)),
-                    Sbc(_) | Sbcn => u8_subc(self.a, n, self.get_flag_bit(FLAG_C)),
-                    Xor(_) | Xorn => u8_xor(self.a, n),
-                    Cmp(_) | Cmpn => u8_cmp(self.a, n),
+                | Andn | Orn | Adcn | Sbcn | Xorn | Cmpn => {
+                    let n = match instr {
+                        Addn | Subn | Andn | Orn | Adcn | Sbcn | Xorn | Cmpn => self.fetch(memory),
+                        Add(r) | Sub(r) | And(r) | Or(r) | Adc(r) | Sbc(r) | Xor(r) | Cmp(r) => {
+                            self.get_reg(r, memory)
+                        }
+                        _ => panic!("not supposed to get here"),
+                    };
+                    let result = match instr {
+                        //kinda yuck
+                        Add(_) | Addn => u8_add(self.a, n),
+                        Sub(_) | Subn => u8_sub(self.a, n),
+                        And(_) | Andn => u8_and(self.a, n),
+                        Or(_) | Orn => u8_or(self.a, n),
+                        Adc(_) | Adcn => u8_addc(self.a, n, self.get_flag_bit(FLAG_C)),
+                        Sbc(_) | Sbcn => u8_subc(self.a, n, self.get_flag_bit(FLAG_C)),
+                        Xor(_) | Xorn => u8_xor(self.a, n),
+                        Cmp(_) | Cmpn => u8_cmp(self.a, n),
 
-                    _ => (0, 0),
-                };
-                match instr {
-                    Cmp(_) | Cmpn => (),
-                    _ => self.set_reg(A, result.0, memory),
+                        _ => (0, 0),
+                    };
+                    match instr {
+                        Cmp(_) | Cmpn => (),
+                        _ => self.set_reg(A, result.0, memory),
+                    }
+                    self.f = result.1;
                 }
-                self.f = result.1;
-            }
             AddSpE => {
                 let e = self.fetch(memory);
                 let result = i16_add(self.sp as i16, e as i8 as i16);
@@ -376,7 +396,6 @@ impl SharpSM83 {
             JPHL => {
                 self.pc = self.get_reg_view(HL);
             }
-
             JRe => {
                 let e = self.fetch(memory) as i8 as i16;
                 self.pc = i16_add(self.pc as i16, e).0 as u16;
@@ -410,30 +429,33 @@ impl SharpSM83 {
                 self.write(self.sp, high_u16(self.pc), memory);
                 self.sp = self.sp.overflowing_sub(1).0;
                 self.write(self.sp, low_u16(self.pc), memory);
-
-                self.pc = RST[n as usize] as u16;
+                let addr = RST[n as usize];
+                self.pc = u8_to_u16(0x00, addr);
             }
             RET => {
-                let lsb = memory.read(self.sp);
+                //println!("{:#02X}, {:#02X}", self.sp, self.pc);
+                let lsb = self.read(self.sp, memory);
                 self.sp = u16_add(self.sp, 1).0;
-                let msb = memory.read(self.sp);
+                let msb = self.read(self.sp, memory);
                 self.sp = u16_add(self.sp, 1).0;
-                self.pc = u8_to_u16(msb, lsb);    
+                //println!("{:#02X}, {:#02X}, {:#02X}, {:#02X}", self.pc, msb, lsb, self.sp);
+                self.pc = u8_to_u16(msb, lsb);
+                //println!("{:#02X}, {:#02X}, {:#02X}, {:#02X}", self.pc, msb, lsb, self.sp);
             }
             RETcc(cc) => {
                 if self.check_conditions(cc) {
                     //println!("{cc:#010b}");
-                    let lsb = memory.read(self.sp);
+                    let lsb = self.read(self.sp, memory);
                     self.sp = u16_add(self.sp, 1).0;
-                    let msb = memory.read(self.sp);
+                    let msb = self.read(self.sp, memory);
                     self.sp = u16_add(self.sp, 1).0;
                     self.pc = u8_to_u16(msb, lsb);    
                 }
             }
             RETI => {
-                let lsb = memory.read(self.sp);
+                let lsb = self.read(self.sp, memory);
                 self.sp = u16_add(self.sp, 1).0;
-                let msb = memory.read(self.sp);
+                let msb = self.read(self.sp, memory);
                 self.sp = u16_add(self.sp, 1).0;
                 self.ime = 1;
                 self.pc = u8_to_u16(msb, lsb);
@@ -509,6 +531,18 @@ impl SharpSM83 {
             _ => panic!("also should not be here lmfao"),
         }
     }
+    
+
+    /*
+     * Memory Converter
+     */
+    fn read(&self, addr: u16, memory: &Memory) -> u8 {
+        return if !self.rom_control && addr < 0x100 {
+            self.boot_rom.read(addr)
+        } else {
+            memory.read(addr)
+        }
+    }
 
     /*
      * Interrupts
@@ -516,7 +550,7 @@ impl SharpSM83 {
 
     /// Handle Interrupts
     fn handle_interrupt(&mut self, memory: &mut Memory) -> bool {
-        let (if_reg, ie_reg) = (memory.read(IF), memory.read(IE));
+        let (if_reg, ie_reg) = (self.read(IF, memory), self.read(IE, memory));
         if if_reg & 0b1 > 0 && ie_reg & 0b1 > 0 {
             //println!("VBlank interrupt");
             memory.write(IF, if_reg & 0b1111_1110);
@@ -530,7 +564,7 @@ impl SharpSM83 {
             return true;
         }
         if if_reg & 0b100 > 0 && ie_reg & 0b100 > 0 {
-            println!("Timer interrupt");
+            //println!("Timer interrupt");
             self.execute(INTn(0x0050), memory);
             memory.write(IF, if_reg & 0b1111_1011);
             return true;
@@ -772,7 +806,7 @@ impl SharpSM83 {
             A => self.a,
             READ_HL => {
                 let loc = self.get_reg_view(HL);
-                memory.read(loc)
+                self.read(loc, memory)
             }
             _ => 0,
         }

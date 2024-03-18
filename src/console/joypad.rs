@@ -52,33 +52,37 @@ impl Joypad {
         } else { false };   
         
 
-        let joyp = memory.read(JOYP);
+        let joyp = memory.read_io(JOYP);
         let sel_buttons = joyp & 0b0010_0000 == 0;
         let sel_dpad = joyp & 0b0001_0000 == 0;
         
-        self.dpad = self.dpad_to_bin();
-        self.buttons = self.buttons_to_bin();
+        if sel_buttons | sel_dpad {
+            //println!("joyp: {:#010b}", joyp);
+        }
+        let dpad = self.dpad_to_bin();
+        let buttons = self.buttons_to_bin();
         
         let mut data = joyp & 0xF0;
         if sel_buttons {
-            data += self.buttons;
+            data |= buttons;
         }
         else if sel_dpad {
-            data += self.dpad;
+            data |= dpad;
+        } else {
+            data |= 0x0F;
         }
-        Joypad::request_interrupt(memory);
-        memory.write_io(JOYP, data);
+        //Joypad::request_interrupt(memory);
 
-        /*if self.dpad != dpad {
-            println!("dpad: {dpad:#08b}");
+        if self.dpad != dpad {
+            println!("dpad: {data:#010b}");
             Joypad::request_interrupt(memory);
             self.dpad = dpad;
         }
-
         if self.buttons != buttons {
-            println!("buttons: {buttons:#08b}");
+            println!("buttons: {data:#010b}");
             self.buttons = buttons;
-        }*/
+        }
+        memory.write_io(JOYP, data);
     }
 
     fn buttons_to_bin(&self) -> u8 {
