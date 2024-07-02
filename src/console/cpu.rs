@@ -31,7 +31,7 @@ pub struct SharpSM83 {
     pub pc: u16,
     sp: u16,
     boot_rom: Memory,
-    rom_control: bool,
+    pub rom_control: bool,
     pub stop: bool,
     pub halt: bool,
     last_instr: Instruction,
@@ -41,6 +41,12 @@ pub struct SharpSM83 {
 impl SharpSM83 {
     pub fn is_interruptible(&self) -> bool {
         self.ime == 1
+    }
+    
+    pub fn new_test() -> SharpSM83 {
+        let mut cpu = SharpSM83::new();
+        cpu.rom_control = true;
+        cpu
     }
 
     pub fn new() -> SharpSM83 {
@@ -76,7 +82,7 @@ impl SharpSM83 {
             self.halt = false;
         }
 
-        if self.stop && self.read(0xFF00, memory) & 0xF != 0xF {
+        if self.stop && self.read(0xFF00, memory) & 0xF != 0x0 {
             self.stop = false;
         }
     }
@@ -115,7 +121,7 @@ impl SharpSM83 {
     }
 
     fn fetch(&mut self, memory: &Memory) -> u8 {
-
+        //this should either be 0xff or 0x100
         if self.pc == 0xFF && !self.rom_control {
             self.rom_control = true;
             self.print();
@@ -220,7 +226,9 @@ impl SharpSM83 {
             }
             LDHLwSP => {
                 let e = self.fetch(memory);
+                println!("{e}");
                 let result = i16_add(self.get_reg_view(SP) as i16, e as i8 as i16);
+                println!("{}, {}", result.0 as u16, self.get_reg_view(SP));
                 self.set_rr(HL, result.0 as u16);
                 self.set_flags(false, false, result.2, result.1);
             }
@@ -537,7 +545,7 @@ impl SharpSM83 {
      * Memory Converter
      */
     fn read(&self, addr: u16, memory: &Memory) -> u8 {
-        return if !self.rom_control && addr < 0x100 {
+        return if !self.rom_control && addr < 0x100 && memory.read(0xFF50) == 0 {
             self.boot_rom.read(addr)
         } else {
             memory.read(addr)
@@ -551,34 +559,35 @@ impl SharpSM83 {
     /// Handle Interrupts
     fn handle_interrupt(&mut self, memory: &mut Memory) -> bool {
         let (if_reg, ie_reg) = (self.read(IF, memory), self.read(IE, memory));
+        //println!("if: {:#10b}, ie: {:#10b}", if_reg, ie_reg);
         if if_reg & 0b1 > 0 && ie_reg & 0b1 > 0 {
             //println!("VBlank interrupt");
             memory.write(IF, if_reg & 0b1111_1110);
             self.execute(INTn(0x0040), memory);
             return true;
         }
-        if if_reg & 0b10 > 0 && ie_reg & 0b10 > 0 {
+        else if if_reg & 0b10 > 0 && ie_reg & 0b10 > 0 {
             println!("STAT interrupt");
-            self.execute(INTn(0x0048), memory);
             memory.write(IF, if_reg & 0b1111_1101);
+            self.execute(INTn(0x0048), memory);
             return true;
         }
-        if if_reg & 0b100 > 0 && ie_reg & 0b100 > 0 {
-            //println!("Timer interrupt");
-            self.execute(INTn(0x0050), memory);
+        else if if_reg & 0b100 > 0 && ie_reg & 0b100 > 0 {
+            println!("Timer interrupt");
             memory.write(IF, if_reg & 0b1111_1011);
+            self.execute(INTn(0x0050), memory);
             return true;
         }
-        if if_reg & 0b1000 > 0 && ie_reg & 0b1000 > 0 {
+        else if if_reg & 0b1000 > 0 && ie_reg & 0b1000 > 0 {
             println!("Serial interrupt");
-            self.execute(INTn(0x0058), memory);
             memory.write(IF, if_reg & 0b1111_0111);
+            self.execute(INTn(0x0058), memory);
             return true;
         }
-        if if_reg & 0b10000 > 0 && ie_reg & 0b10000 > 0 {
+        else if if_reg & 0b10000 > 0 && ie_reg & 0b10000 > 0 {
             println!("Joypad interrupt");
-            self.execute(INTn(0x0060), memory);
             memory.write(IF, if_reg & 0b1110_1111);
+            self.execute(INTn(0x0060), memory);
             return true;
         }
 

@@ -12,6 +12,7 @@ pub const BOOT_ROM_PATH: &str = "./gb_boot/DMG_ROM.gb";
 
 const DMA: u16 = 0xFF46;
 const JOYP: u16 = 0xFF00;
+use super::regids::IF;
 
 // size in bits
 #[derive(Debug, Clone)]
@@ -23,7 +24,6 @@ impl Memory {
 
     pub fn new(size: usize) -> Memory {
         let mut data = vec![0x00; size];
-
         if size > 0xFF00 {
             data[0xFF00] = 0b00110000;
         }
@@ -74,10 +74,20 @@ impl Memory {
             //println!("writing serial data {:#010b}", byte);
         }
         if addr >= 0xC000 && addr <= 0xDDFF {
+            self.data[(addr) as usize] = byte;
             self.data[(addr + 0x2000) as usize] = byte;
         }
+        if addr >= 0xE000 && addr <= 0xFDFF {
+            self.data[(addr - 0x2000) as usize] = byte;
+            self.data[(addr) as usize] = byte;
+
+        }
         match addr {
-            DMA => self.dma_transfer(byte),
+            DMA => {
+                println!("{byte}");
+                self.dma_transfer(byte);
+                self.data[addr as usize] = byte
+            }
             JOYP => {
                 //println!("writing normal {:#010b}, {:#010b}", byte, self.data[addr as usize]);
                 self.data[addr as usize] = (byte & 0xF0) + (self.data[addr as usize] & 0x0F);
@@ -100,6 +110,12 @@ impl Memory {
             let byte = self.read(source + i);
             self.write(dest + i, byte);
         }
+    }
+
+    pub fn request_interrupt(&mut self, interrupt: u8) {
+        let if_old = self.read(IF);
+        let if_new = if_old | interrupt;
+        self.write(IF, if_new);
     }
 
     pub fn log(&self) -> Result<()> {

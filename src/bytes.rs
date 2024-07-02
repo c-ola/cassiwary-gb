@@ -5,6 +5,13 @@ pub fn set_bit(x: u8, bit: u8, value: bool) -> u8 {
     }
 }
 
+#[macro_export]
+macro_rules! test_bit {
+    ($x:expr, $bit:expr) => {
+        $x & (0b1 << $bit) != 0
+    };
+}
+
 pub fn cmpbit(x: u8, y: u8) -> bool {
     x & y == y
 }

@@ -4,8 +4,9 @@ use std::collections::HashSet;
 
 use sdl2::keyboard::Keycode;
 
+use crate::interrupts::JOYPAD_I;
+
 use super::memory::Memory;
-use super::regids::IF;
 
 #[derive(Default, Debug)]
 pub struct Joypad {
@@ -71,11 +72,11 @@ impl Joypad {
         } else {
             data |= 0x0F;
         }
-        //Joypad::request_interrupt(memory);
+        //memory.request_interrupt(JOYPAD);
 
         if self.dpad != dpad {
             println!("dpad: {data:#010b}");
-            Joypad::request_interrupt(memory);
+            memory.request_interrupt(JOYPAD_I);
             self.dpad = dpad;
         }
         if self.buttons != buttons {
@@ -101,12 +102,6 @@ impl Joypad {
         if !self.up { input += 0b100 }
         if !self.down { input += 0b1000 }
         input
-    }
-
-    fn request_interrupt(memory: &mut Memory) {
-        let if_old = memory.read(IF);
-        let if_new = if_old | 0b1_0000 ;
-        memory.write(IF, if_new);
     }
 
 }

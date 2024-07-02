@@ -1,14 +1,16 @@
-use crate::console::*;
+use interrupts::TIMER_I;
+
+use crate::{console::*, test_bit};
 
 const DIV: u16 = 0xFF04;
 const TIMA: u16 = 0xFF05;
 const TMA: u16 = 0xFF06;
 const TAC: u16 = 0xFF07;
 
-//const CLOCK_SPEEDS: [usize; 4] = [1024, 16, 64, 256]; 
-//const CLOCK_SPEEDS: [usize; 4] = [4096, 262144, 65546, 16384]; 
-const CLOCK_SPEEDS: [usize; 4] = [256, 4, 16, 64]; 
-const DIV_SPEED: usize = 256; 
+//const CLOCK_SPEEDS: [usize; 4] = [1024, 16, 64, 256];
+//const CLOCK_SPEEDS: [usize; 4] = [4096, 262144, 65546, 16384];
+const CLOCK_SPEEDS: [usize; 4] = [256, 4, 16, 64];
+const DIV_SPEED: usize = 256;
 
 pub struct HTimer {
     div_dots: usize,
@@ -20,7 +22,6 @@ pub struct HTimer {
 }
 
 impl HTimer {
-    
     pub fn new() -> HTimer {
         HTimer {
             div_dots: 0usize,
@@ -46,52 +47,35 @@ impl HTimer {
         memory.write(TAC, self.tac);
     }
 
-    pub fn update(&mut self, memory: &mut Memory){
+    pub fn update(&mut self, stopped: bool, memory: &mut Memory) {
         self.get_registers(memory);
         //println!("{}, {}, {}, {}", self.div, self.tima, self.tma, self.tac);
-        
-        if self.div_dots >= DIV_SPEED {
-            self.div();
+        if stopped {
+            self.div = 0;
+        }
+        if self.div_dots >= DIV_SPEED && !stopped {
+            self.div = self.div.overflowing_add(1).0;
             self.div_dots = 0;
-        }         
+        }
 
         let clk_s = self.tac & 0b11;
         if self.tima_dots >= CLOCK_SPEEDS[clk_s as usize] {
-            if self.tima() {
-                HTimer::request_interrupt(2, memory);
+            let tima_en = test_bit!(self.tac, 2);
+            if tima_en {
+                let sum = self.tima.overflowing_add(1);
+                if sum.1 {
+                    self.tima = self.tma;
+                    memory.request_interrupt(TIMER_I);
+                } else {
+                    self.tima = sum.0;
+                }
             }
             self.tima_dots = 0;
-        }   
-        
+        }
+
         self.div_dots += 1;
         self.tima_dots += 1;
-        
+
         self.set_registers(memory);
     }
-
-    fn div(&mut self) {
-        self.div = self.div.overflowing_add(1).0;
-    }
-
-    fn tima(&mut self) -> bool {
-        let tima_en = (self.tac & 0b100) != 0;
-        let mut result = false;
-        if tima_en {
-            let sum = self.tima.overflowing_add(1);
-            if sum.1 {
-                self.tima = self.tma;
-                result = true;
-            } else {
-                self.tima = sum.0;
-            }
-        }
-        result
-    }
-
-    fn request_interrupt(bit: u8, memory: &mut Memory) {
-        let if_old = memory.read(IF);
-        let if_new = if_old | (0b1 << bit);
-        memory.write(IF, if_new);
-    }
 }
-

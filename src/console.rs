@@ -5,6 +5,7 @@ pub mod timer;
 pub mod joypad;
 pub mod regids;
 pub mod apu;
+pub mod interrupts;
 
 use crate::ppu::*;
 use crate::cpu::*;
@@ -13,6 +14,7 @@ use crate::timer::*;
 use crate::joypad::*;
 use crate::regids::*;
 use crate::apu::*;
+
 
 use std::ops::Deref;
 use std::time::{Instant, Duration};
@@ -103,7 +105,7 @@ impl GameBoy {
 
         // Audio
         
-        let audio_subsystem = sdl_context.audio().unwrap();
+        /*let audio_subsystem = sdl_context.audio().unwrap();
 
         let desired_spec = AudioSpecDesired {
             freq: Some(44100),
@@ -116,7 +118,7 @@ impl GameBoy {
             // initialize the audio callback
             apu.get_sound()
         }).unwrap();
-        device.resume();
+        //device.resume();*/
 
         let mut event_pump = sdl_context.event_pump().unwrap();
 
@@ -214,8 +216,9 @@ impl GameBoy {
                     //self.gamepack.write(IF, if_new);
                     //self.gamepack.write_io(0xFF02, 0x00);
                     //self.gamepack.write_io(0xFF01, 0x00);
-
                 }
+                //let (if_reg, ie_reg) = (self.read(IF, memory), self.read(IE, memory));
+                //println!("if: {:#10b}, ie: {:#10b}", if_reg, ie_reg);
 
                 self.joypad.update(&mut self.gamepack, &keys); 
                 self.cpu.update(&mut self.gamepack);
@@ -225,12 +228,11 @@ impl GameBoy {
                 }
                 //apu.update(&mut self.gamepack);
                 if clock_cycles % 456 == 0 {
-                    apu.update(&mut self.gamepack);
                     ppu.update(&mut self.gamepack);
-
                 }
+                    //apu.update(&mut self.gamepack);
 
-                self.timer.update(&mut self.gamepack);
+                self.timer.update(self.cpu.stop, &mut self.gamepack);
 
                 clock_cycles += 1;
                 clock_timer = Instant::now();
@@ -242,10 +244,11 @@ impl GameBoy {
              * Event polling is done here to speed up the reset of the code 
              */
             if render_timer.elapsed() > Duration::from_micros(16670){
+                //println!("CGB flag: {:#4x}", self.gamepack.read(0x0143));
                 // Create a set of pressed Keys.
                 //println!("{:#010b}", self.gamepack.read(0xFF00));
-                let mut cb_guard = device.lock();
-                *cb_guard = apu.get_sound();
+               // let mut cb_guard = device.lock();
+               // *cb_guard = apu.get_sound();
                 //apu.update(&mut self.gamepack);
                 //println!("{:#04X}", self.gamepack.read(0xffc5));
                 for event in event_pump.poll_iter() {
@@ -271,7 +274,7 @@ impl GameBoy {
 
                 render_timer = Instant::now();
             }
-            device.resume();
+            //device.resume();
 
 
 
