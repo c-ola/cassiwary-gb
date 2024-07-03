@@ -12,69 +12,189 @@ use crate::cpu::*;
 use crate::memory::*;
 use crate::timer::*;
 use crate::joypad::*;
-use crate::regids::*;
-use crate::apu::*;
 
 
-use std::ops::Deref;
+use core::fmt;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::AtomicU64;
+use std::sync::atomic::Ordering;
+use std::sync::mpsc;
+use std::sync::mpsc::channel;
+use std::sync::mpsc::Receiver;
+use std::sync::mpsc::Sender;
+use std::sync::Arc;
+use std::sync::Condvar;
+use std::sync::Mutex;
+use std::thread;
+use std::thread::JoinHandle;
 use std::time::{Instant, Duration};
-use std::cmp::{min, max};
+use std::cmp::min;
 use std::collections::HashSet;
 use std::fs::read;
+use std::u128;
 
-use sdl2::audio::AudioCallback;
-use sdl2::audio::AudioSpecDesired;
+use interrupts::SERIAL_I;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::PixelFormatEnum;
 use sdl2::rect::Rect;
-use sdl2::render::{Canvas, Texture};
-use sdl2::video::Window;
 
 
+pub const CLOCK_RATE_NANOS: u64 = 238;
 pub const LCD_WIDTH: usize = 160;
 pub const LCD_HEIGHT: usize = 144;
 pub const LCD_SIZE: usize = LCD_WIDTH*LCD_HEIGHT;
 const SCREEN_WIDTH: u32 = LCD_WIDTH as u32 * 4;
 const SCREEN_HEIGHT: u32 = LCD_HEIGHT as u32 * 4;
 
-pub struct GameBoy {
-    cpu: SharpSM83,
-    pub gamepack: Memory,
-    pub boot_rom: Memory,
+#[derive(Debug, Clone)]
+struct PerfError {
+    value: String
+}
+
+impl fmt::Display for PerfError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.value)
+    }
+}
+
+#[derive(Debug)]
+struct PerfTimer<const N: usize = 1000> {
+    start: Option<Instant>,
+    times: [u128; N],
+    index: usize,
+}
+
+impl<const N: usize> PerfTimer<N> {
+    fn new() -> PerfTimer<N> {
+        PerfTimer {
+            start: None,
+            times: [0; N],
+            index: 0
+        }
+    }
+    fn start(&mut self) {
+        self.start = Some(Instant::now());
+    }
+    fn end(&mut self) -> Result<(), PerfError> {
+        return match self.start {
+            None => {
+                println!("err");
+                Err(PerfError{value: String::from("Must start timer before ending")})
+            },
+            Some(start) => {
+                self.times[self.index] = start.elapsed().as_nanos();
+                self.index += 1;
+                if self.index >= N {
+                    self.index = 0;
+                }
+                self.start = None;
+                Ok(())
+            }
+        }
+    }
+    fn avg(&self) -> f64 {
+        let sum: u128 = self.times.iter().sum();
+        let avg: f64 = sum as f64 / N as f64;
+        avg
+    }
+}
+
+
+
+pub struct GBIO {
     timer: HTimer,
     joypad: Joypad,
-    reset: bool,
+    pub ppu: PPU,
+    //serial: SerialPort,
+}
+
+impl GBIO {
+    pub fn new() -> GBIO {
+        GBIO {
+            timer: HTimer::new(),
+            joypad: Joypad::default(),
+            ppu: PPU::new(),
+        }
+    }
+
+    pub fn update(&mut self, memory: &mut Memory, keys: &HashSet<Keycode>) -> Result<(), String> {
+        self.joypad.update(memory, &keys);
+        self.timer.update(false, memory);
+        self.ppu.update(memory);
+        if memory.read(0xFF02) == 0x81 {
+            memory.request_interrupt(SERIAL_I);
+            memory.write_io(0xFF02, 0x01);
+            print!("{}", memory.read(0xFF01) as char);
+            memory.write_io(0xFF01, 0xFF);
+        } else if memory.read(0xFF02) == 0x80 {
+            //self.gamepack.request_interrupt(SERIAL_I);
+            //self.gamepack.write_io(0xFF02, 0x00);
+            //self.gamepack.write_io(0xFF01, 0x00);
+            //print!("{}", self.gamepack.read(0xFF01) as char);
+        }
+
+        Ok(())
+    }
+
+}
+
+pub struct GameBoy {
+    pub gamepack: Arc<Mutex<Memory>>,
     log_memory: bool,
 }
 
 impl GameBoy {
 
     pub fn new(log_memory: bool) -> GameBoy {
-        let memory = Memory::new(8 * KBYTE);
+        let memory = Arc::new(Mutex::new(Memory::new(8 * KBYTE)));
         GameBoy {
             gamepack: memory,
-            boot_rom: Memory::from_file(0xFF, BOOT_ROM_PATH),
-            cpu: SharpSM83::new(),
-            timer: HTimer::new(),
-            joypad: Joypad::default(),
-            reset: false,
             log_memory,
-
         }
     }
 
-    pub fn tick_cpu(&mut self) -> usize {
-        return match self.cpu.run(&mut self.gamepack) {
-            Some(cycles) => {
-                cycles
-            },
-            None => panic!("something went wrong"), 
-        }
+    fn run_cpu(&mut self, stop_signal: Arc<AtomicBool>, clock: Arc<(Mutex<usize>, Condvar)>) -> thread::JoinHandle<()> {
+        let mut clock_timer = Instant::now();
+
+        //let mut clock_cycles: usize = 0;
+        let mut cpu_cycles: usize = 0;
+        let mut counter = 0;
+
+        let instrs = -1;
+        let mut cpu = SharpSM83::new();
+        // Spawn this
+        let memory = Arc::clone(&self.gamepack);
+        let cpu_handle = thread::spawn(move || {
+            'running: loop {
+                println!("cpu: {counter}");
+                if counter == instrs || stop_signal.load(Ordering::SeqCst) {
+                    break 'running
+                }
+
+                let (lock, cvar) = &*clock; 
+                let clock_cycles = lock.lock().unwrap();
+                let clock_cycles_guard = cvar.wait(clock_cycles).unwrap(); 
+                // CPU
+                let mut memory = memory.lock().unwrap();
+                cpu.update(&mut memory);
+                
+                
+                if cpu_cycles == *clock_cycles_guard {
+                    counter += 1;
+                    cpu_cycles += cpu.run(&mut memory);
+                    println!("cpu: {clock_cycles_guard}");
+                }
+                clock_timer = Instant::now();
+            }
+        });
+        cpu_handle
     }
 
     pub fn run_emu(&mut self) -> Result<(), String>{
-        let mut ppu = PPU::new();
+        /*
+         * Setup SDL context and window
+         */
 
         let sdl_context = sdl2::init()?;
         let video_subsystem = sdl_context.video()?;
@@ -86,204 +206,85 @@ impl GameBoy {
             .map_err(|e| e.to_string())?;
 
         let mut canvas = window.into_canvas().build().unwrap();
-
         let texture_creator = canvas.texture_creator();
-
-        /*let mut texture = texture_creator
-            .create_texture_target(PixelFormatEnum::RGBA8888, 160, 144)
-            .map_err(|e| e.to_string())?;*/
-
         let mut texture = texture_creator
             .create_texture_streaming(PixelFormatEnum::RGBA8888, LCD_WIDTH as u32, LCD_HEIGHT as u32)
             .map_err(|e| e.to_string())?;
-
         canvas.clear();
-
         canvas.copy(&texture, None, Some(Rect::new(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT)))?;
         canvas.present();
-        
-
-        // Audio
-        
-        /*let audio_subsystem = sdl_context.audio().unwrap();
-
-        let desired_spec = AudioSpecDesired {
-            freq: Some(44100),
-            channels: Some(1),  // mono
-            samples: None       // default sample size
-        };
-        let mut apu = Apu::new();
-
-        let mut device = audio_subsystem.open_playback(None, &desired_spec, |spec| {
-            // initialize the audio callback
-            apu.get_sound()
-        }).unwrap();
-        //device.resume();*/
 
         let mut event_pump = sdl_context.event_pump().unwrap();
 
         let mut render_timer = Instant::now();
 
+        /*
+         * I/O Devices
+         */
+        let mut io_devices = GBIO::new();
+        //let keys: Arc<Mutex<HashSet<Keycode>>> = Arc::new(Mutex::new(HashSet::new()));
+        let mut keys: HashSet<Keycode> = HashSet::new();
+        let stop = Arc::new(AtomicBool::new(false));
+
+        /*
+         * Timing 
+         */
+        //let clock = Arc::new((Mutex::new(0), Condvar::new()));
+        let mut clock_cycles = 0;
+        //let cpu_handle = self.run_cpu(stop.clone(), Arc::clone(&clock));
+        
+        let mut cpu_cycles: usize = 0;
+        let mut cpu = SharpSM83::new();
+
         let mut clock_timer = Instant::now();
-        let mut log_timer = Instant::now();
-
-        let mut run_time = Instant::now();
-
-        let mut clock_cycles: i32 = 0;
-        let mut cpu_cycles: i32 = 0;
-        let mut counter = 0;
-
-        let cpu_dur = Duration::from_nanos(238 / 4);
-
-        let instrs = -1;
-
-        let mut broken = false;
-        let breakpoints = [
-            //0x260, //flush wram 1
-            //0x272, //
-            //0x281, // flush OAM
-            //0x28A, // flush RAM 
-            //0x293, //copy dam transfer routine into hram
-            //0x2A0, // call Flush_BG1
-            //0x2A3, // call Sound_Init
-            //0x2C4, // main loop
-            //0x2C7, // call state machine
-            0x1,
-            0x2,
-            0x30C9
-        ];
-
-        let mut keys:HashSet<Keycode> = HashSet::new();
-        let mut old_keys:HashSet<Keycode> = HashSet::new();
-
         'running: loop {
-
-
-
-
-            /*
-             * Debug Control
-             */
-            /*if !broken {
-              for breakpoint in breakpoints {
-              if self.cpu.pc == breakpoint as u16 {
-              println!("reached breakpoint, {breakpoint:#04X}");
-              broken = true;
-              counter += 1;
-              break;
-              }
-              }
-              }*/
-
-            if keys.contains(&Keycode::P) {
-                //self.cpu.print();
-            }
-            if keys.contains(&Keycode::S) {
-                //self.gamepack.print(self.cpu.get_reg_view(SP) - 0xF, 3)
-            }
-            if keys.contains(&Keycode::H) {
-                //self.gamepack.print(self.cpu.get_reg_view(HL) - 0xF, 3)
-            }
-            if broken && !old_keys.contains(&Keycode::Return) && keys.contains(&Keycode::Return){
-                broken = false;
-            }
-
-            if counter == instrs {
-                break 'running
-            }
-
-            /*
-             * Update
-             */
-
-            /*
-             * Only update input certain times per second to not massively slow down code
-             *
-             */
-
-            // tick the clock at 4.194 mhz
-            if clock_timer.elapsed() > cpu_dur {
-                if self.gamepack.read(0xFF02) == 0x81 {
-                    let if_old = self.gamepack.read(IF);
-                    let if_new = if_old | 0b0_1000 ;
-                    self.gamepack.write(IF, if_new);
-                    self.gamepack.write_io(0xFF02, 0x01);
-                    print!("{}", self.gamepack.read(0xFF01) as char);
-                    //self.gamepack.write_io(0xFF01, 0xFF);
-                } else if self.gamepack.read(0xFF02) == 0x80 {
-                    //let if_old = self.gamepack.read(IF);
-                    //let if_new = if_old | 0b0_1000 ;
-                    //self.gamepack.write(IF, if_new);
-                    //self.gamepack.write_io(0xFF02, 0x00);
-                    //self.gamepack.write_io(0xFF01, 0x00);
+            if clock_timer.elapsed() > Duration::from_nanos(CLOCK_RATE_NANOS) {
+                let mut memory = &mut *self.gamepack.lock().unwrap();
+                cpu.update(&mut memory);
+                if cpu_cycles == clock_cycles {
+                    cpu_cycles += cpu.run(&mut memory);
                 }
-                //let (if_reg, ie_reg) = (self.read(IF, memory), self.read(IE, memory));
-                //println!("if: {:#10b}, ie: {:#10b}", if_reg, ie_reg);
-
-                self.joypad.update(&mut self.gamepack, &keys); 
-                self.cpu.update(&mut self.gamepack);
-                if cpu_cycles - clock_cycles == 0 {
-                    counter += 1;
-                    cpu_cycles += self.tick_cpu() as i32;
-                }
-                //apu.update(&mut self.gamepack);
-                if clock_cycles % 456 == 0 {
-                    ppu.update(&mut self.gamepack);
-                }
-                    //apu.update(&mut self.gamepack);
-
-                self.timer.update(self.cpu.stop, &mut self.gamepack);
-
+                // threads enters here
+                io_devices.update(memory, &keys).unwrap();
+                //let (lock, cvar) = &*clock; 
+                //let mut clock_cycles = lock.lock().unwrap();
                 clock_cycles += 1;
+                //cvar.notify_one();
+                //println!("{clock_cycles}");
                 clock_timer = Instant::now();
             }
-
-
             /*
              * Actual Rendering
              * Event polling is done here to speed up the reset of the code 
              */
             if render_timer.elapsed() > Duration::from_micros(16670){
-                //println!("CGB flag: {:#4x}", self.gamepack.read(0x0143));
-                // Create a set of pressed Keys.
-                //println!("{:#010b}", self.gamepack.read(0xFF00));
-               // let mut cb_guard = device.lock();
-               // *cb_guard = apu.get_sound();
-                //apu.update(&mut self.gamepack);
-                //println!("{:#04X}", self.gamepack.read(0xffc5));
                 for event in event_pump.poll_iter() {
                     match event {
                         Event::Quit {..} |
                             Event::KeyDown { keycode: Some(Keycode::Escape), .. } => {
+                                println!("stopping");
+                                //stop.store(true, Ordering::SeqCst);
                                 break 'running
                             },
                         _ => {}
                     }
                 }
 
-                old_keys = keys.clone();
                 keys = event_pump
                     .keyboard_state()
                     .pressed_scancodes()
                     .filter_map(Keycode::from_scancode)
                     .collect();
-                ppu.render(&mut texture)?;
+                io_devices.ppu.render(&mut texture)?;
 
                 canvas.copy(&texture, None, None)?;
                 canvas.present();
 
                 render_timer = Instant::now();
             }
-            //device.resume();
-
-
-
-            if run_time.elapsed() > Duration::from_secs(1){
-                // break 'running
-            }
-
         }
 
+        //cpu_handle.join().unwrap();
         self.stop();
         Ok(())
     }
@@ -291,29 +292,29 @@ impl GameBoy {
     pub fn stop(&self) {    
         if self.log_memory {
             self.log_memory();
-            self.gamepack.print(0, 16);
-            self.cpu.print();
+            //self.gamepack.lock().unwrap().print(0, 16);
+            //self.cpu.print();
         }   
-        println!("Instructions executed: {}", self.cpu.get_instr_executed());
+       // println!("Instructions executed: {}", self.cpu.get_instr_executed());
     }
 
     pub fn load_memory(&mut self, data: &[u8]) {
         for i in 0..data.len() {
             let byte = data[i];
-            self.gamepack.write(i as u16, byte);
+            //self.gamepack.lock().unwrap().write(i as u16, byte);
         }
     }
 
     pub fn log_memory(&self) {
-        match self.gamepack.log() {
+        match self.gamepack.lock().unwrap().log() {
             Ok(()) => (),
             Err(error) => println!("{error}"),
         }
     }
 
-    pub fn peek_cpu(&self) -> &SharpSM83 {
+    /*pub fn peek_cpu(&self) -> &SharpSM83 {
         &self.cpu
-    }
+    }*/
 
     pub fn load_rom(&mut self, rom_path: std::path::PathBuf) {
 
@@ -324,29 +325,31 @@ impl GameBoy {
         ];
 
 
+        let mut memory = self.gamepack.lock().unwrap();
         match read(rom_path) {
             Ok(buffer) => {
                 //rom banks
                 for i in 0..buffer.len() {
-                    self.gamepack.write(i as u16, buffer[i]);
+                    memory.write(i as u16, buffer[i]);
                 } 
 
                 // external ram
                 if buffer.len() > 0xA000 {
                     for i in 0xA000..0xBFFF {
-                        self.gamepack.write(i as u16, buffer[i]);
+                        memory.write(i as u16, buffer[i]);
                     }
                 }
             }
             Err(error) => match read(BOOT_ROM_PATH) {
                 Ok(buffer) => {
+                    println!("{error}, trying to recover");
                     //load default boot rom
                     for i in 0..min(buffer.len(), 0x10000) {
-                        self.gamepack.write(i as u16, buffer[i]);
+                        memory.write(i as u16, buffer[i]);
                     }
 
                     for i in 0..logo.len() {
-                        self.gamepack.write(0x0104 + i as u16, logo[i]);
+                        memory.write(0x0104 + i as u16, logo[i]);
                     }
                 },
                 Err(error) => panic!("{error} boot rom error, file not found or incorrect file"),

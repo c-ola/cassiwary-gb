@@ -8,7 +8,6 @@ const TMA: u16 = 0xFF06;
 const TAC: u16 = 0xFF07;
 
 //const CLOCK_SPEEDS: [usize; 4] = [1024, 16, 64, 256];
-//const CLOCK_SPEEDS: [usize; 4] = [4096, 262144, 65546, 16384];
 const CLOCK_SPEEDS: [usize; 4] = [256, 4, 16, 64];
 const DIV_SPEED: usize = 256;
 
@@ -29,18 +28,18 @@ impl HTimer {
             div: 0,
             tima: 0u8,
             tma: 0u8,
-            tac: 0u8,
+            tac: 0xf8u8,
         }
     }
 
-    fn get_registers(&mut self, memory: &Memory) {
+    pub fn get_registers(&mut self, memory: &Memory) {
         self.div = memory.read(DIV);
         self.tima = memory.read(TIMA);
         self.tma = memory.read(TMA);
         self.tac = memory.read(TAC);
     }
 
-    fn set_registers(&mut self, memory: &mut Memory) {
+    pub fn set_registers(&mut self, memory: &mut Memory) {
         memory.write(DIV, self.div);
         memory.write(TIMA, self.tima);
         memory.write(TMA, self.tma);

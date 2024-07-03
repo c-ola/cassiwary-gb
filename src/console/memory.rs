@@ -83,8 +83,10 @@ impl Memory {
 
         }
         match addr {
+            0xFF42 => {
+                self.data[addr as usize] |= byte & 0b1111_1100;
+            }
             DMA => {
-                println!("{byte}");
                 self.dma_transfer(byte);
                 self.data[addr as usize] = byte
             }

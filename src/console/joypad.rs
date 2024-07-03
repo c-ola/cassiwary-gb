@@ -4,7 +4,7 @@ use std::collections::HashSet;
 
 use sdl2::keyboard::Keycode;
 
-use crate::interrupts::JOYPAD_I;
+use crate::{interrupts::JOYPAD_I, test_bit};
 
 use super::memory::Memory;
 
@@ -26,40 +26,19 @@ impl Joypad {
 
     pub fn update(&mut self, memory: &mut Memory, keys: &HashSet<Keycode>) {
         
-        self.a = if keys.contains(&Keycode::X) {
-            true
-        } else { false };
-        self.b = if keys.contains(&Keycode::Z) {
-            true
-        } else { false };
-        self.select = if keys.contains(&Keycode::Backspace) {
-            true
-        } else { false };
-        self.start = if keys.contains(&Keycode::Return) {
-            true
-        } else { false };
+        self.a = keys.contains(&Keycode::X);
+        self.b = keys.contains(&Keycode::Z);
+        self.select = keys.contains(&Keycode::Backspace);
+        self.start = keys.contains(&Keycode::Return);
+        self.down = keys.contains(&Keycode::Down);
+        self.up = keys.contains(&Keycode::Up);
+        self.left = keys.contains(&Keycode::Left);
+        self.right = keys.contains(&Keycode::Right);
 
-        self.down = if keys.contains(&Keycode::Down) {
-            true
-        } else { false };
-        self.up = if keys.contains(&Keycode::Up) {
-            true
-        } else { false };
-        self.left = if keys.contains(&Keycode::Left) {
-            true
-        } else { false };
-        self.right = if keys.contains(&Keycode::Right) {
-            true
-        } else { false };   
-        
+        let joyp = memory.read(JOYP);
+        let sel_buttons = !test_bit!(joyp, 5);
+        let sel_dpad = !test_bit!(joyp, 4);
 
-        let joyp = memory.read_io(JOYP);
-        let sel_buttons = joyp & 0b0010_0000 == 0;
-        let sel_dpad = joyp & 0b0001_0000 == 0;
-        
-        if sel_buttons | sel_dpad {
-            //println!("joyp: {:#010b}", joyp);
-        }
         let dpad = self.dpad_to_bin();
         let buttons = self.buttons_to_bin();
         
@@ -67,22 +46,25 @@ impl Joypad {
         if sel_buttons {
             data |= buttons;
         }
-        else if sel_dpad {
+        if sel_dpad {
             data |= dpad;
-        } else {
+        }
+        if !sel_dpad && !sel_buttons {
             data |= 0x0F;
         }
         //memory.request_interrupt(JOYPAD);
 
         if self.dpad != dpad {
-            println!("dpad: {data:#010b}");
+            println!("dpad: {dpad:#010b}");
             memory.request_interrupt(JOYPAD_I);
             self.dpad = dpad;
         }
         if self.buttons != buttons {
-            println!("buttons: {data:#010b}");
+            println!("buttons: {buttons:#010b}");
+            memory.request_interrupt(JOYPAD_I);
             self.buttons = buttons;
         }
+        //memory.request_interrupt(JOYPAD_I);
         memory.write_io(JOYP, data);
     }
 

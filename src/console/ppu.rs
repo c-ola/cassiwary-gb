@@ -53,11 +53,11 @@ const LYC_EQ_LY: u8 = 1 << 2;
 const PPU_MODE: u8 = 0b11;
 
 /*const PALETTE: [Color; 4] = [
-Color::RGB(0xe0, 0xf8, 0xd0),
-Color::RGB(0x88, 0xc0, 0x70),
-Color::RGB(0x34, 0x68, 0x56),
-Color::RGB(0x08, 0x18, 0x20),
-];*/
+  Color::RGB(0xe0, 0xf8, 0xd0),
+  Color::RGB(0x88, 0xc0, 0x70),
+  Color::RGB(0x34, 0x68, 0x56),
+  Color::RGB(0x08, 0x18, 0x20),
+  ];*/
 
 const PALETTE: [[u8; 4]; 4] = [
     [0xE0, 0xF8, 0xD0, 0xFF],
@@ -67,7 +67,7 @@ const PALETTE: [[u8; 4]; 4] = [
 ];
 
 const PALETTE_OBJ: [[u8; 4]; 4] = [
-    [0x00, 0x00, 0x00, 0x00],
+    [0xE0, 0xF8, 0xD0, 0xFF],
     [0x88, 0xC0, 0x70, 0xFF],
     [0x34, 0x68, 0x56, 0xFF],
     [0x08, 0x18, 0x20, 0xFF],
@@ -114,6 +114,11 @@ pub struct PPU {
     obp0: u8,
     obp1: u8,
 
+    stat_int: bool,
+
+    //objects
+    objects: Vec<u16>,
+
     bg_fifo: VecDeque<Pixel>,
     obj_fifo: VecDeque<Pixel>,
     bg: [u8; LCD_SIZE * 4],
@@ -140,6 +145,9 @@ impl PPU {
             obp0: 0u8,
             obp1: 0u8,
 
+            stat_int: false,
+
+            objects: Vec::new(),
             bg_fifo: VecDeque::new(),
             obj_fifo: VecDeque::new(),
             bg: [0x00; LCD_SIZE * 4],
@@ -170,26 +178,11 @@ impl PPU {
             && self.fy >= self.wy
             && self.fy <= 143;
 
-        let win_tma = if self.check_lcdc(WIN_TM) {
-            TMA_0
-        } else {
-            TMA_1
-        };
-
-        let bg_tma = if !self.check_lcdc(BG_TM) {
-            TMA_0
-        } else {
-            TMA_1
-        };
-
-        let tma = if self.check_lcdc(WIN_EN) && in_window {
-            win_tma
-        } else {
-            bg_tma
-        };
+        let win_tma = if self.check_lcdc(WIN_TM) { TMA_0 } else { TMA_1 };
+        let bg_tma = if !self.check_lcdc(BG_TM) { TMA_0 } else { TMA_1 };
+        let tma = if self.check_lcdc(WIN_EN) && in_window { win_tma } else { bg_tma };
         self.scy = 0;
         self.scx = 0;
-        self.fx = (self.fx + self.scx / 8) & 0x1F;
         //self.fy = self.scy;
         self.fy = ((self.ly as u16 + self.scy as u16) & 0xFF) as u8;
 
@@ -199,7 +192,7 @@ impl PPU {
         }
 
         let block_y = self.fy as u16 / 8;
-        let loc = tma + self.fx as u16 + 32 * block_y;
+        let loc = tma + (self.fx / 8) as u16 + 32 * block_y;
         //println!("{loc:#04X}, fetcher: {}, {}", self.fx, block_y);
 
         memory.read(loc) as u16
@@ -262,181 +255,181 @@ impl PPU {
             //return
         }
 
-        if self.ly == self.ly && self.stat & 0b01000000 != 0 {
-            memory.request_interrupt(STAT_I);
-            self.stat |= 0b10;
+        // Mode 2
+        if self.dots < 80 {
+            self.oam_scan(memory);
         }
-        //if self.dots % 20 == 0 {
-        self.fx = 0;
-        //}
-        for _ in 0..20 {
-            self.dot(memory);
-        }
-        //if self.dots % 20 == 0 {
-        self.ly = (self.ly + 1) % 154;
-        //}
-        self.dots += 1;
 
-        self.set_registers(memory);
-    }
-
-    /*
-     *
-     * Modify scan line to go pixel by pixel, this means that mixing bytes will have to be changed
-     * A way to index 2 bits from bytes will be needed
-     * for x in scanlineLength:
-     *  fx = x + scx / 8
-     *  fy = y + scy
-     *
-     *  etc
-     */
-    fn dot(&mut self, memory: &mut Memory) {
-        if self.ly <= 143 {
-            // get valid objects to be drawn
-            self.mode = 2;
-            let mut objects = self.get_obj(memory);
-            objects.sort_by(|a, b| {
-                let xa = memory.read(a + 1).overflowing_sub(8).0;
-                let xb = memory.read(b + 1).overflowing_sub(8).0;
-                xa.partial_cmp(&xb).unwrap()
-            });
-
-            if self.stat & 0b0010_0000 != 0 {
-                memory.request_interrupt(STAT_I);
-            }
-
+        // prepare for drawing pixels (mode 3)
+        if self.dots == 80 {
+            self.fx = 0;
+            self.fy = 0;
             self.mode = 3;
-
-            let mut obj_counter = 0;
-            //render each tile
-            //for i in 0..20 {
-            let tile_index = self.get_tile(memory);
-            let mut vram_bank = if test_bit!(self.lcdc, 4) {
-                if tile_index < 128 {
-                    VB_0
-                } else {
-                    VB_0 // should be VB_1 i think
-                }
-            } else {
-                if tile_index < 128 {
-                    VB_2
-                } else {
-                    VB_0
-                }
-            };
-
-            if self.lcdc & WIN_EN != 0 {
-                vram_bank = if self.lcdc & BGWIN_TILES != 0 {
-                    VB_0
-                } else {
-                    VB_1
-                };
-            }
-            let index_low = vram_bank + tile_index * 16 + (self.fy as u16 % 8) * 2;
-            let index_high = index_low + 1;
-            let low = memory.read(index_low);
-            let high = memory.read(index_high);
-            let bgp = memory.read(BGP);
-            let pixels = PPU::mix_bytes(low, high);
-            for p in 0..8 {
-                self.bg_fifo.push_back(Pixel::new(pixels[p], bgp, 0, 0));
-            }
-
-            if obj_counter < 10 {
-                for addr in &objects {
-                    //let y = memory.read(addr + 0);
-                    let x = memory.read(*addr + 1);
-                    let x_min = self.fx as u16 * 8 + 8;
-                    let x_max = x_min + 8;
-                    if x as u16 >= x_min && (x as u16) < x_max {
-                        //obj_counter += 1;
-                        let attributes = memory.read(*addr + 3);
-                        let y_flip = test_bit!(attributes, 6);
-                        let x_flip = test_bit!(attributes, 5);
-
-                        let obj_ti = memory.read(*addr + 2) as u16;
-
-                        let y = memory.read(*addr) as u16;
-                        let diff =
-                            ((self.fy as u16).overflowing_sub(y).0.overflowing_add(16).0) % 8;
-                        let obj_internal_y = if !y_flip { diff * 2 } else { (8 - diff) * 2 };
-
-                        let index_low = VB_0 + obj_ti * 16 + obj_internal_y;
-                        let index_high = index_low + 1;
-                        let low = memory.read(index_low);
-                        let high = memory.read(index_high);
-
-                        let palette = if test_bit!(attributes, 5) {
-                            memory.read(OBP0)
-                        } else {
-                            memory.read(OBP1)
-                        };
-
-                        let obj_pixels = PPU::mix_bytes_obj(low, high, y_flip, x_flip);
-                        for p in 0..8 {
-                            self.obj_fifo.push_back(Pixel::new(
-                                obj_pixels[p],
-                                palette,
-                                0,
-                                attributes & 0x80 >> 7,
-                            ));
-                        }
-                        break;
-                    }
-                }
-                // }
-                //println!("{:?}", self.obj_fifo);
-
-                self.internal_render(self.fx as usize);
-
-                self.fx = self.fx + 1;
-            }
-            self.mode = 0;
         }
 
-        if self.ly > 143 {
+        if self.dots >= 80 && self.mode == 3 && self.ly < 144 {
+            self.draw_pixels(memory);
+        }
+
+        if self.mode == 0 {
+
+        }
+
+        if self.ly >= 144 {
             memory.request_interrupt(VBLANK_I);
             self.mode = 1;
         }
 
-        self.stat |= self.mode;
+        if self.lyc == self.ly {
+            self.stat |= 0b100;
+            if test_bit!(self.stat, 6) && !self.stat_int {
+                memory.request_interrupt(STAT_I);
+                self.stat_int = true;
+            }
+        } else {
+            self.stat &= 0b1111_1011;
+        }
+
+        if ((self.mode == 0 && test_bit!(self.stat, 3)) 
+            || (self.mode == 1 && test_bit!(self.stat, 4))
+            || (self.mode == 2 && test_bit!(self.stat, 5))) && !self.stat_int {
+            memory.request_interrupt(STAT_I);
+            self.stat_int = true;
+        }
+
+        self.dots += 1;
+        if self.dots % 456 == 0 {
+            self.objects.clear();
+            self.ly = (self.ly + 1) % 154;
+            self.dots = 0;
+        }
+
+        self.set_registers(memory);
     }
 
-    fn internal_render(&mut self, x: usize) {
-        for i in 0..8 {
-            let pixel = self.bg_fifo.pop_front().unwrap_or(Pixel::new(3, 0, 0, 0));
-            let obj_pixel = self.obj_fifo.pop_front().unwrap_or(Pixel::new(0, 0, 0, 1));
 
-            let index = (self.fx as usize * 8 + i + LCD_WIDTH * self.ly as usize) * 4;
-            if index >= self.bg.len() {
-                println!("index broken oops");
+    fn oam_scan(&mut self, memory: &mut Memory) {
+        self.mode = 2;
+        if self.objects.len() < 10 {
+            let mut found_objects = self.get_obj(memory);
+            found_objects.sort_by(|a, b| {
+                let xa = memory.read(a + 1).overflowing_sub(8).0;
+                let xb = memory.read(b + 1).overflowing_sub(8).0;
+                xa.partial_cmp(&xb).unwrap()
+            });
+            for i in 0..min(found_objects.len(), 10) {
+                if !self.objects.contains(&found_objects[i]) {
+                    self.objects.push(found_objects[i]);
+                }
+            }
+        }
+    }
+
+    fn draw_pixels(&mut self, memory: &mut Memory) {
+
+        // get the background pixel
+        let tile_index = self.get_tile(memory);
+        let mut vram_bank = if test_bit!(self.lcdc, 4) {
+            if tile_index < 128 { VB_0 } else { VB_0 }
+        } else {
+            if tile_index < 128 { VB_2 } else { VB_0 }
+        };
+        if self.lcdc & WIN_EN != 0 {
+            vram_bank = if self.lcdc & BGWIN_TILES != 0 {VB_0} else {VB_1};
+        }
+        let index_low = vram_bank + tile_index * 16 + (self.fy as u16 % 8) * 2;
+        let index_high = index_low + 1;
+        let low = memory.read(index_low);
+        let high = memory.read(index_high);
+        let pixels = PPU::mix_bytes(low, high);
+        let pix_idx = self.fx % 8;
+        let bgp = memory.read(BGP);
+        self.bg_fifo.push_back(Pixel::new(pixels[pix_idx as usize], bgp, 0, 0));
+
+        // push object
+        for addr in &self.objects {
+            //let y = memory.read(addr + 0);
+            let x = memory.read(*addr + 1);
+            let x_min = self.fx as u16;
+            let x_max = x_min + 8;
+            if x as u16 > x_min && (x as u16) <= x_max {
+                let xdiff = x_max - x as u16;
+                //obj_counter += 1;
+                let attributes = memory.read(*addr + 3);
+                let y_flip = test_bit!(attributes, 6);
+                let x_flip = test_bit!(attributes, 5);
+
+                let obj_ti = memory.read(*addr + 2) as u16;
+
+                let y = memory.read(*addr) as u16;
+                let diff =
+                    ((self.fy as u16).overflowing_sub(y).0.overflowing_add(16).0) % 8;
+                let obj_internal_y = if !y_flip { diff * 2 } else { (8 - diff) * 2 };
+
+                let index_low = VB_0 + obj_ti * 16 + obj_internal_y;
+                let index_high = index_low + 1;
+                let low = memory.read(index_low);
+                let high = memory.read(index_high);
+
+                let palette = memory.read(if test_bit!(attributes, 5) {OBP0} else {OBP1});
+
+                let obj_pixels = PPU::mix_bytes_obj(low, high, y_flip, x_flip);
+                self.obj_fifo.push_back(Pixel::new(
+                        obj_pixels[xdiff as usize],
+                        palette,
+                        0,
+                        attributes & 0x80 >> 7,
+                        ));
                 break;
             }
-            let mut bgp = [0u8; 4];
-            bgp[0] = (pixel.palette) & 0b11;
-            bgp[1] = (pixel.palette >> 2) & 0b11;
-            bgp[2] = (pixel.palette >> 4) & 0b11;
-            bgp[3] = (pixel.palette >> 6) & 0b11;
+        }
+        // move the correct pixel values to the screen
+        self.internal_render();
 
-            let mut obp = [0u8; 4];
-            obp[0] = (obj_pixel.palette) & 0b11;
-            obp[1] = (obj_pixel.palette >> 2) & 0b11;
-            obp[2] = (obj_pixel.palette >> 4) & 0b11;
-            obp[3] = (obj_pixel.palette >> 6) & 0b11;
+        self.fx += 1;
+        //println!("{}", self.fx);
+        if self.fx >= 160 {
+            self.fx = 0;
+            self.mode = 0;
+            self.stat |= self.mode;
+        }
 
-            let bg_color = PALETTE[bgp[pixel.color as usize] as usize];
-            let obj_color = PALETTE_OBJ[obp[obj_pixel.color as usize] as usize];
-            if obj_pixel.bg_prio == 1 || obj_pixel.color as usize == 0 {
-                self.bg[index] = bg_color[3];
-                self.bg[index + 1] = bg_color[2];
-                self.bg[index + 2] = bg_color[1];
-                self.bg[index + 3] = bg_color[0];
-            } else {
-                self.bg[index] = bg_color[3];
-                self.bg[index + 1] = obj_color[2];
-                self.bg[index + 2] = obj_color[1];
-                self.bg[index + 3] = obj_color[0];
-            }
+    }
+
+
+    fn internal_render(&mut self) {
+        let pixel = self.bg_fifo.pop_front().unwrap_or(Pixel::new(3, 0, 0, 0));
+        let obj_pixel = self.obj_fifo.pop_front().unwrap_or(Pixel::new(0, 0, 0, 1));
+
+        let index = (self.fx as usize + LCD_WIDTH * self.ly as usize) * 4;
+        if index >= self.bg.len() {
+            panic!("index outside of frame buffer");
+        }
+
+        let mut bgp = [0u8; 4];
+        bgp[0] = (pixel.palette) & 0b11;
+        bgp[1] = (pixel.palette >> 2) & 0b11;
+        bgp[2] = (pixel.palette >> 4) & 0b11;
+        bgp[3] = (pixel.palette >> 6) & 0b11;
+
+        let mut obp = [0u8; 4];
+        obp[0] = (obj_pixel.palette) & 0b11;
+        obp[1] = (obj_pixel.palette >> 2) & 0b11;
+        obp[2] = (obj_pixel.palette >> 4) & 0b11;
+        obp[3] = (obj_pixel.palette >> 6) & 0b11;
+
+        let bg_color = PALETTE[bgp[pixel.color as usize] as usize];
+        let obj_color = PALETTE_OBJ[obp[obj_pixel.color as usize] as usize];
+        if obj_pixel.bg_prio == 1 || obj_pixel.color as usize == 0 {
+            self.bg[index] = bg_color[3];
+            self.bg[index + 1] = bg_color[2];
+            self.bg[index + 2] = bg_color[1];
+            self.bg[index + 3] = bg_color[0];
+        } else {
+            self.bg[index] = bg_color[3];
+            self.bg[index + 1] = obj_color[2];
+            self.bg[index + 2] = obj_color[1];
+            self.bg[index + 3] = obj_color[0];
         }
     }
 
